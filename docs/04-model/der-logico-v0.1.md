@@ -2,7 +2,9 @@
 
 Base: `model-relational-v0.1.md` (Clase 03) y ficha oficial del proyecto 16. Este documento todavía no contiene SQL ni tipos de datos.
 
-Respecto a la Clase 03 se agregan las cuatro tablas que habían quedado pendientes: `movimiento_insumo`, `bitacora_campo`, `incidencia` y `auditoria`. Con ellas el DER cubre los 15 conceptos de la sección F de la ficha.
+Respecto a la Clase 03 se agregan las cuatro tablas que habían quedado pendientes: `movimiento_insumo`, `bitacora_campo`, `incidencia` y `auditoria`. Con ellas el DER cubre los 15 conceptos de la sección F de la ficha. Además incluye la tabla puente `campana_parcela`, 16 tablas en total.
+
+Cambio respecto a la primera versión: el equipo confirmó que una campaña abarca varias parcelas. Se agrega la tabla puente `campana_parcela`; `campana` ya no tiene `parcela_id` y `labor` apunta a `campana_parcela`.
 
 ## Convenciones
 - PK = clave primaria
@@ -19,9 +21,10 @@ Respecto a la Clase 03 se agregan las cuatro tablas que habían quedado pendient
 erDiagram
     rol ||--o{ usuario : "se asigna a"
     predio ||--o{ parcela : "tiene"
-    parcela ||--o{ campana : "participa en"
+    campana ||--|{ campana_parcela : "abarca"
+    parcela ||--o{ campana_parcela : "participa en"
     cultivo ||--o{ campana : "se siembra en"
-    campana ||--o{ labor : "contiene"
+    campana_parcela ||--o{ labor : "contiene"
     labor ||--o{ asignacion_labor : "se asigna mediante"
     usuario ||--o{ asignacion_labor : "es operario en"
     usuario ||--o{ asignacion_labor : "asigna"
@@ -85,21 +88,25 @@ erDiagram
 
 ## campana
 - PK campana_id
-- FK parcela_id -> parcela.parcela_id (NN)
 - FK cultivo_id -> cultivo.cultivo_id (NN)
 - NN nombre
 - NN fecha_inicio
 - NN fecha_fin_prevista
 - NULL fecha_cierre
 - NN estado
-- UQ (parcela_id, fecha_inicio)
 - CK estado en {activa, finalizada}
 - CK fecha_inicio <= fecha_fin_prevista
 - CK si estado = finalizada, fecha_cierre es obligatoria
 
+## campana_parcela
+- PK campana_parcela_id
+- FK campana_id -> campana.campana_id (NN)
+- FK parcela_id -> parcela.parcela_id (NN)
+- UQ (campana_id, parcela_id)
+
 ## labor
 - PK labor_id
-- FK campana_id -> campana.campana_id (NN)
+- FK campana_parcela_id -> campana_parcela.campana_parcela_id (NN)
 - NN tipo_labor
 - NULL descripcion
 - NN fecha_programada
@@ -194,43 +201,45 @@ Nota: `registro_id` guarda el identificador de la fila afectada, pero no es FK, 
 ## Relaciones
 1. rol 1 ---- N usuario
 2. predio 1 ---- N parcela
-3. parcela 1 ---- N campana
-4. cultivo 1 ---- N campana
-5. campana 1 ---- N labor
-6. labor 1 ---- N asignacion_labor
-7. usuario 1 ---- N asignacion_labor (como operario)
-8. usuario 1 ---- N asignacion_labor (como quien asigna)
-9. labor 1 ---- N consumo_labor
-10. insumo 1 ---- N consumo_labor
-11. usuario 1 ---- N consumo_labor
-12. insumo 1 ---- N movimiento_insumo
-13. usuario 1 ---- N movimiento_insumo
-14. consumo_labor 1 ---- 0..1 movimiento_insumo (un consumo se respalda con una salida; las entradas no tienen consumo)
-15. campana 1 ---- N cosecha
-16. usuario 1 ---- N cosecha
-17. parcela 1 ---- N bitacora_campo
-18. campana 0..1 ---- N bitacora_campo
-19. labor 0..1 ---- N bitacora_campo
-20. usuario 1 ---- N bitacora_campo
-21. parcela 1 ---- N incidencia
-22. campana 0..1 ---- N incidencia
-23. labor 0..1 ---- N incidencia
-24. usuario 1 ---- N incidencia
-25. usuario 1 ---- N auditoria
+3. campana 1 ---- N campana_parcela (una campaña abarca al menos una parcela)
+4. parcela 1 ---- N campana_parcela
+5. cultivo 1 ---- N campana
+6. campana_parcela 1 ---- N labor
+7. labor 1 ---- N asignacion_labor
+8. usuario 1 ---- N asignacion_labor (como operario)
+9. usuario 1 ---- N asignacion_labor (como quien asigna)
+10. labor 1 ---- N consumo_labor
+11. insumo 1 ---- N consumo_labor
+12. usuario 1 ---- N consumo_labor
+13. insumo 1 ---- N movimiento_insumo
+14. usuario 1 ---- N movimiento_insumo
+15. consumo_labor 1 ---- 0..1 movimiento_insumo (un consumo se respalda con una salida; las entradas no tienen consumo)
+16. campana 1 ---- N cosecha
+17. usuario 1 ---- N cosecha
+18. parcela 1 ---- N bitacora_campo
+19. campana 0..1 ---- N bitacora_campo
+20. labor 0..1 ---- N bitacora_campo
+21. usuario 1 ---- N bitacora_campo
+22. parcela 1 ---- N incidencia
+23. campana 0..1 ---- N incidencia
+24. labor 0..1 ---- N incidencia
+25. usuario 1 ---- N incidencia
+26. usuario 1 ---- N auditoria
 
 Relaciones N:M resueltas con tabla puente:
+- campana N:M parcela -> campana_parcela
 - labor N:M usuario (operario) -> asignacion_labor
 - labor N:M insumo -> consumo_labor
 
 ## Unicidades: ámbito
 - Globales (no se repiten en todo el sistema): usuario.correo, insumo.codigo, rol.nombre, predio.nombre.
 - Contextual (única dentro de un padre): (parcela.predio_id, parcela.codigo). El código "P-01" puede repetirse en predios distintos, pero no dentro del mismo predio.
-- Compuestas: (asignacion_labor.labor_id, asignacion_labor.operario_id), (campana.parcela_id, campana.fecha_inicio), (cultivo.nombre, cultivo.variedad).
+- Compuestas: (asignacion_labor.labor_id, asignacion_labor.operario_id), (campana_parcela.campana_id, campana_parcela.parcela_id), (cultivo.nombre, cultivo.variedad).
 - De relación 1 a 0..1: movimiento_insumo.consumo_labor_id, para que un consumo no tenga dos salidas.
 
 ## Reglas que afectan el modelo
-- RN-01: una parcela participa en campañas distintas en el tiempo, no superpuestas -> decisión: campana lleva parcela_id, fecha_inicio y fecha_fin_prevista obligatorias; la no superposición se valida en backend porque compara varias filas.
-- RN-02: toda labor pertenece a una campaña y parcela -> decisión: labor.campana_id es FK obligatoria; labor no lleva parcela_id porque la parcela se obtiene por la campaña.
+- RN-01: una parcela participa en campañas distintas en el tiempo, no superpuestas -> decisión: la relación campaña — parcela es N:M y se resuelve con campana_parcela; campana lleva fecha_inicio y fecha_fin_prevista obligatorias; la no superposición se valida en backend porque compara varias filas.
+- RN-02: toda labor pertenece a una campaña y parcela -> decisión: labor.campana_parcela_id es FK obligatoria; así la labor siempre queda en una parcela que participa en su campaña.
 - RN-03: la labor tiene cinco estados -> decisión: labor.estado obligatorio con dominio cerrado; las transiciones se validan en backend.
 - RN-04: el consumo no supera el stock -> decisión: insumo.stock_disponible obligatorio y no negativo; la comparación consumo contra stock se valida en backend dentro de una transacción.
 - RN-05: los operarios sólo reportan labores asignadas -> decisión: existe asignacion_labor con operario_id; el control de quién puede reportar es de backend.
@@ -241,8 +250,8 @@ Relaciones N:M resueltas con tabla puente:
 - RN-10: la IA no prescribe dosis ni tratamientos -> decisión: no genera tablas; incidencia.clasificacion sólo guarda una etiqueta de texto.
 
 ## Cómo se conecta el DER con el flujo crítico
-1. Jefe crea campaña sobre parcela: nueva fila en campana con parcela_id y cultivo_id.
-2. Planifica labores: filas en labor con campana_id y estado planificada.
+1. Jefe crea campaña sobre parcela: nueva fila en campana con cultivo_id, y una fila en campana_parcela por cada parcela.
+2. Planifica labores: filas en labor con campana_parcela_id y estado planificada.
 3. Asigna operario: fila en asignacion_labor; labor.estado pasa a asignada.
 4. Almacén entrega insumo: fila en movimiento_insumo de tipo salida, ligada a un consumo_labor; baja insumo.stock_disponible.
 5. Operario ejecuta y reporta: labor.estado pasa a en_ejecucion y luego a completada; se registran fecha_inicio_real y fecha_fin_real.

@@ -2,6 +2,7 @@
 
 Diseño físico preparado para PostgreSQL. Deriva de `der-logico-v0.1.md` y `diccionario-datos-v0.1.md` (Clase 04) y de la ficha oficial del proyecto 16. Todavía no se ejecuta CREATE TABLE; este documento es la especificación con la que se escribirá el SQL en la Clase 06.
 
+- Cambio respecto al DER inicial: una campaña abarca varias parcelas; se agrega la tabla puente `campana_parcela`.
 - Convenciones de nombres y tipos: `convenciones-bd-v0.1.md`.
 - Orden de creación y alcance de la primera migración: `plan-migracion-v1.md`.
 - Columna "NULL": NO significa obligatorio (NOT NULL); SÍ significa que puede faltar.
@@ -103,15 +104,14 @@ Diseño físico preparado para PostgreSQL. Deriva de `der-logico-v0.1.md` y `dic
 - Ninguna.
 
 ## campana
-- Propósito: una fila representa un ciclo productivo de un cultivo sobre una parcela.
+- Propósito: una fila representa un ciclo productivo de un cultivo sobre una o varias parcelas.
 
 | Columna | Tipo candidato | NULL | Rol/Restricción | Fuente |
 |---|---|---|---|---|
 | campana_id | BIGINT | NO | PK | Diseño |
-| parcela_id | BIGINT | NO | FK -> parcela.parcela_id; UQ uq_campana_parcela_fecha_inicio | RN-01, flujo J |
 | cultivo_id | BIGINT | NO | FK -> cultivo.cultivo_id | RF-03 |
 | nombre | VARCHAR(100) | NO | — | RF-03 |
-| fecha_inicio | DATE | NO | UQ uq_campana_parcela_fecha_inicio; CK ck_campana_fechas | RN-01 |
+| fecha_inicio | DATE | NO | CK ck_campana_fechas | RN-01 |
 | fecha_fin_prevista | DATE | NO | CK ck_campana_fechas: fecha_inicio <= fecha_fin_prevista | RN-01 |
 | fecha_cierre | DATE | SÍ | CK ck_campana_cierre | RN-06, RN-09 |
 | estado | VARCHAR(20) | NO | CK ck_campana_estado: activa, finalizada. Valor inicial: activa | RN-06, RN-09 |
@@ -124,16 +124,34 @@ Diseño físico preparado para PostgreSQL. Deriva de `der-logico-v0.1.md` y `dic
 - `fecha_fin_prevista` es obligatoria porque sin ella no se puede comprobar la superposición.
 
 ### Regla que NO se resuelve sólo con constraint simple
-- RN-01: no superposición de períodos entre campañas de la misma parcela. Compara varias filas; va en backend.
+- RN-01: no superposición de períodos entre campañas que comparten una parcela. Compara varias filas; va en backend.
+- Toda campaña debe tener al menos una fila en campana_parcela.
 - RN-09: una campaña finalizada no se elimina.
 
+## campana_parcela
+- Propósito: una fila representa que una parcela participa en una campaña.
+
+| Columna | Tipo candidato | NULL | Rol/Restricción | Fuente |
+|---|---|---|---|---|
+| campana_parcela_id | BIGINT | NO | PK | Diseño |
+| campana_id | BIGINT | NO | FK -> campana.campana_id; UQ uq_campana_parcela_campana_parcela | RN-01, flujo J |
+| parcela_id | BIGINT | NO | FK -> parcela.parcela_id; UQ uq_campana_parcela_campana_parcela | RN-01 |
+
+### Decisiones
+- Es la tabla puente de la relación N:M entre campaña y parcela.
+- Lleva PK técnica porque `labor` apunta a ella con una sola columna. La UQ (campana_id, parcela_id) impide repetir una parcela dentro de la misma campaña.
+- No lleva created_at/updated_at: la fila no se edita, sólo se agrega o se quita.
+
+### Regla que NO se resuelve sólo con constraint simple
+- RN-01: una parcela no puede participar en dos campañas con períodos superpuestos. Compara varias filas; va en backend.
+
 ## labor
-- Propósito: una fila representa un trabajo de campo planificado dentro de una campaña.
+- Propósito: una fila representa un trabajo de campo planificado en una parcela de una campaña.
 
 | Columna | Tipo candidato | NULL | Rol/Restricción | Fuente |
 |---|---|---|---|---|
 | labor_id | BIGINT | NO | PK | Diseño |
-| campana_id | BIGINT | NO | FK -> campana.campana_id | RN-02 |
+| campana_parcela_id | BIGINT | NO | FK -> campana_parcela.campana_parcela_id | RN-02 |
 | tipo_labor | VARCHAR(40) | NO | — | RF-04 |
 | descripcion | TEXT | SÍ | — | RF-04 |
 | fecha_programada | DATE | NO | — | RF-04, RF-06 |
@@ -146,7 +164,7 @@ Diseño físico preparado para PostgreSQL. Deriva de `der-logico-v0.1.md` y `dic
 ### Decisiones
 - `fecha_programada` es DATE porque se planifica por día. Las fechas reales son TIMESTAMPTZ porque registran el instante en que el operario inicia y completa desde el móvil.
 - Las fechas reales son NULL hasta que la labor se inicia o se completa.
-- No existe `parcela_id`: la parcela se obtiene a través de la campaña (RN-02).
+- No hay `campana_id` y `parcela_id` por separado: `campana_parcela_id` garantiza que la parcela de la labor participa en su campaña (RN-02).
 
 ### Regla que NO se resuelve sólo con constraint simple
 - RN-03: transiciones permitidas entre estados (planificada -> asignada -> en_ejecucion -> completada; cancelación antes de completarse).
@@ -272,7 +290,7 @@ Diseño físico preparado para PostgreSQL. Deriva de `der-logico-v0.1.md` y `dic
 - `descripcion` es TEXT porque una observación puede ser larga.
 
 ### Regla que NO se resuelve sólo con constraint simple
-- Si se indica labor, debe ser de la campaña indicada; si se indica campaña, debe ser de esa parcela.
+- Si se indica labor, debe ser de la campaña y la parcela indicadas; si se indica campaña, la parcela debe participar en ella.
 
 ## incidencia
 - Propósito: una fila representa un hecho excepcional ocurrido en campo.
@@ -322,7 +340,7 @@ Diseño físico preparado para PostgreSQL. Deriva de `der-logico-v0.1.md` y `dic
 | campana | fecha_cierre | Sí | Campaña activa que aún no terminó. | NULL | RN-06, RN-09 |
 | campana | fecha_fin_prevista | No | — | NOT NULL | RN-01: sin ella no se valida la superposición. |
 | labor | fecha_inicio_real | Sí | Labor planificada o asignada que nadie inició. | NULL | RN-03, RF-07 |
-| labor | campana_id | No | — | NOT NULL | RN-02 |
+| labor | campana_parcela_id | No | — | NOT NULL | RN-02 |
 | movimiento_insumo | consumo_labor_id | Sí | Entrada de insumo por compra. | NULL | RF-10 |
 | incidencia | labor_id | Sí | Daño por granizo detectado sin una labor en curso. | NULL | RN-08 |
 | incidencia | parcela_id | No | — | NOT NULL | RN-08 |
@@ -341,8 +359,8 @@ Diseño físico preparado para PostgreSQL. Deriva de `der-logico-v0.1.md` y `dic
 
 | Paso del flujo (sección J) | Tabla que se consulta o modifica | ¿Existen los datos necesarios? |
 |---|---|---|
-| Jefe crea campaña sobre parcela | Consulta parcela y cultivo; inserta en campana | Sí: parcela_id, cultivo_id, fechas y estado. |
-| Planifica labores | Inserta en labor | Sí: campana_id, tipo_labor, fecha_programada, estado planificada. |
+| Jefe crea campaña sobre parcela | Consulta parcela y cultivo; inserta en campana y en campana_parcela | Sí: cultivo_id, fechas y estado; una fila de campana_parcela por cada parcela. |
+| Planifica labores | Inserta en labor | Sí: campana_parcela_id, tipo_labor, fecha_programada, estado planificada. |
 | Asigna operario | Inserta en asignacion_labor; actualiza labor.estado | Sí: labor_id, operario_id, asignado_por_id, fecha_asignacion. |
 | Almacén entrega insumo | Inserta en consumo_labor y en movimiento_insumo; actualiza insumo.stock_disponible | Sí: insumo_id, cantidad, tipo salida, registrado_por_id. |
 | Operario ejecuta y reporta desde móvil | Actualiza labor.estado, fecha_inicio_real y fecha_fin_real | Sí. |
@@ -351,5 +369,6 @@ Diseño físico preparado para PostgreSQL. Deriva de `der-logico-v0.1.md` y `dic
 | Supervisor revisa indicadores | Consulta campana, labor, consumo_labor y cosecha | Sí; no requiere tablas nuevas. |
 
 Brechas registradas:
+- La cosecha se registra contra la campaña (RN-06). Con varias parcelas por campaña, falta confirmar si además debe indicar de cuál parcela proviene.
 - Si el docente define que la entrega del almacén y el consumo del operario son registros distintos, el paso "almacén entrega insumo" necesitará que movimiento_insumo apunte directamente a la labor.
 - `incidencia` y `auditoria` no participan en el flujo crítico; son necesarias porque la ficha las exige (RF-13, RF-18, sección F) y entran en la migración V2.

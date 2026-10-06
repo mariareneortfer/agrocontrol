@@ -5,6 +5,8 @@ Gestión de Lotes Agrícolas, Campañas, Labores, Insumos y Cosecha
 ## 1. Objetivo
 Este documento identifica los conceptos principales del dominio de AgroControl, sus atributos conceptuales, relaciones, cardinalidades y primeras reglas de integridad. Todavía no define tablas, tipos de datos, claves foráneas ni entidades JPA.
 
+> Cambio respecto a la primera versión: el equipo confirmó que una campaña abarca varias parcelas. La relación campaña — parcela pasó de 1:N a N:M.
+
 ## 2. Fuente analizada
 - Proyecto asignado: 16. AgroControl (Banco Oficial de Proyectos II, Programación Aplicada 2026-2).
 - Secciones revisadas: A, B, C, D, E, F, G y J de la ficha oficial.
@@ -17,7 +19,7 @@ Este documento identifica los conceptos principales del dominio de AgroControl, 
 | Predio | Entidad | Existe físicamente, se distingue de otros predios y agrupa parcelas. | Sección D, F, RF-01 |
 | Parcela | Entidad | Es el lote agrícola sobre el que se pide la trazabilidad; tiene identidad, superficie e historial propio. | Sección A, F, RN-01, RF-15 |
 | Cultivo | Entidad (catálogo) | Se gestiona por separado y se reutiliza en muchas campañas. | Sección D, F, RF-02 |
-| Campaña | Entidad | Tiene período, estado, parcela y cultivo; concentra labores, cosechas e historial que no se elimina. | Sección F, RN-01, RN-06, RN-09, RF-03 |
+| Campaña | Entidad | Tiene período, estado, cultivo y una o varias parcelas; concentra labores, cosechas e historial que no se elimina. | Sección F, RN-01, RN-06, RN-09, RF-03 |
 | Labor | Entidad | Trabajo de campo planificado con identidad, fechas y ciclo de estados. | Sección F, RN-02, RN-03, RF-04, RF-07 |
 | AsignacionLabor | Entidad | Registra qué operario fue asignado a qué labor, cuándo y por quién; permite más de un operario y reasignaciones. | Sección F, RN-05, RF-05 |
 | Insumo | Entidad | Producto de almacén con identidad, unidad de medida y stock. | Sección F, RN-04, RF-09 |
@@ -59,15 +61,15 @@ Atributos conceptuales: nombre, variedad (opcional), descripción (opcional).
 Identificador de negocio candidato: nombre + variedad.
 
 ### Campaña
-Responsabilidad: representar un ciclo productivo de un cultivo sobre una parcela durante un período.
+Responsabilidad: representar un ciclo productivo de un cultivo sobre una o varias parcelas durante un período.
 Atributos conceptuales: nombre, fechaInicio, fechaFinPrevista, fechaCierre (opcional), estado.
-Identificador de negocio candidato: parcela + cultivo + fechaInicio.
+Identificador de negocio candidato: nombre de la campaña + fechaInicio.
 Nota: la ficha la escribe "Campana" en la sección F; en este documento se usa el término del dominio, "Campaña".
 
 ### Labor
-Responsabilidad: representar un trabajo de campo planificado dentro de una campaña y su avance.
+Responsabilidad: representar un trabajo de campo planificado en una parcela concreta de una campaña, y su avance.
 Atributos conceptuales: tipo de labor, descripción, fechaProgramada, fechaInicioReal (opcional), fechaFinReal (opcional), estado.
-Identificador de negocio candidato: campaña + tipo de labor + fechaProgramada.
+Identificador de negocio candidato: campaña + parcela + tipo de labor + fechaProgramada.
 
 ### AsignacionLabor
 Responsabilidad: registrar que un operario fue designado para ejecutar una labor.
@@ -121,9 +123,10 @@ Identificador de negocio candidato: ninguno natural; se decidirá en Clase 03.
 
 ## 5. Relaciones
 - Un Predio puede tener muchas Parcelas. Cada Parcela pertenece a un único Predio.
-- Una Parcela puede tener muchas Campañas a lo largo del tiempo. Cada Campaña se desarrolla sobre una única Parcela.
+- Una Parcela puede participar en muchas Campañas a lo largo del tiempo. Cada Campaña se desarrolla sobre una o varias Parcelas.
 - Un Cultivo puede sembrarse en muchas Campañas. Cada Campaña trabaja un único Cultivo.
-- Una Campaña puede tener muchas Labores. Cada Labor pertenece a una única Campaña y, a través de ella, a su Parcela.
+- Una Campaña puede tener muchas Labores. Cada Labor pertenece a una única Campaña.
+- Una Parcela puede tener muchas Labores. Cada Labor se realiza en una única Parcela, que debe ser una de las parcelas de su Campaña.
 - Una Labor puede tener varias Asignaciones. Cada AsignacionLabor corresponde a una única Labor.
 - Un Usuario con rol Operario puede recibir muchas Asignaciones. Cada AsignacionLabor designa a un único Operario.
 - Una Labor puede registrar varios Consumos. Cada ConsumoLabor corresponde a una única Labor.
@@ -144,9 +147,10 @@ Lectura de las columnas: "Para una A" indica cuántas B puede tener una A; "Para
 | Relación (A — B) | Cardinalidad | Para una A | Para una B | Justificación |
 |---|---|---|---|---|
 | Predio — Parcela | 1:N | 0..* | 1 | Un predio recién creado aún no tiene parcelas; una parcela no existe sin predio (RF-01). |
-| Parcela — Campaña | 1:N | 0..* | 1 | RN-01: la parcela participa en campañas distintas en el tiempo. El flujo J crea la campaña "sobre parcela". Ver D-01. |
+| Parcela — Campaña | N:M | 0..* | 1..* | RN-01: la parcela participa en campañas distintas en el tiempo. Una campaña abarca una o varias parcelas (D-01, confirmado por el equipo). |
 | Cultivo — Campaña | 1:N | 0..* | 1 | Un cultivo del catálogo puede no haberse usado aún; una campaña necesita saber qué se cultiva. Ver D-02. |
 | Campaña — Labor | 1:N | 0..* | 1 | RN-02: toda labor pertenece a una campaña. Una campaña recién creada todavía no tiene labores. |
+| Parcela — Labor | 1:N | 0..* | 1 | RN-02: toda labor pertenece a una campaña y parcela. |
 | Labor — AsignacionLabor | 1:N | 0..* | 1 | Una labor planificada aún no tiene asignación; RF-05 habla de "asignar operarios" en plural. |
 | Usuario (Operario) — AsignacionLabor | 1:N | 0..* | 1 | Un operario puede no tener labores; cada asignación nombra a un operario. |
 | Labor — Operario | N:M | 0..* | 0..* | Es la relación que resuelve AsignacionLabor: una labor con varios operarios y un operario con varias labores. |
@@ -167,9 +171,9 @@ Lectura de las columnas: "Para una A" indica cuántas B puede tener una A; "Para
 
 ## 7. Reglas iniciales de integridad
 - RI-01. Toda parcela pertenece a exactamente un predio. (RF-01)
-- RI-02. Toda campaña se define sobre una parcela y un cultivo, con fecha de inicio. (Flujo J, RF-03)
-- RI-03. Dos campañas de una misma parcela no pueden tener períodos superpuestos. (RN-01; ver D-08)
-- RI-04. Toda labor pertenece a una campaña; la parcela de la labor es la parcela de su campaña. (RN-02)
+- RI-02. Toda campaña se define sobre al menos una parcela, con un cultivo y una fecha de inicio. (Flujo J, RF-03)
+- RI-03. Dos campañas que comparten una parcela no pueden tener períodos superpuestos. (RN-01; ver D-08)
+- RI-04. Toda labor pertenece a una campaña y a una parcela; esa parcela debe ser una de las parcelas de la campaña. (RN-02)
 - RI-05. El estado de una labor sólo puede ser planificada, asignada, en ejecución, completada o cancelada. (RN-03)
 - RI-06. Una labor sólo puede estar en estado asignada o posterior si tiene al menos una asignación. (RN-03, RF-05)
 - RI-07. Sólo un usuario con rol Operario puede recibir una asignación, y sólo un operario asignado a la labor puede iniciarla, completarla o reportar sobre ella. (RN-05, RF-07)
@@ -184,7 +188,7 @@ Lectura de las columnas: "Para una A" indica cuántas B puede tener una A; "Para
 RN-10 (la IA no prescribe dosis ni tratamientos) no produce una regla de integridad de datos: limita una funcionalidad, no la estructura del modelo.
 
 ## 8. Dudas y decisiones
-- D-01. ¿Una campaña abarca una sola parcela o varias? RN-02 dice que la labor pertenece "a una campaña y parcela", lo que podría sugerir varias parcelas por campaña. Decisión v0.1: una campaña se desarrolla sobre una sola parcela, porque el flujo J dice "crea campaña sobre parcela" y simplifica el control de superposición de RN-01. Alternativa descartada por ahora: Campaña N:M Parcela. Pendiente de confirmar con el docente.
+- D-01. ¿Una campaña abarca una sola parcela o varias? Resuelta: el equipo confirmó que una campaña abarca varias parcelas. La relación Campaña — Parcela es N:M y cada labor indica en cuál de las parcelas de la campaña se realiza, como dice RN-02 ("a una campaña y parcela"). Alternativa descartada: una sola parcela por campaña, que fue el supuesto inicial.
 - D-02. La ficha no dice explícitamente que cada campaña tenga un único cultivo. Decisión v0.1: un cultivo por campaña. Pendiente de confirmar.
 - D-03. ¿La salida que registra el almacenero y el consumo que reporta el operario son el mismo hecho o dos hechos distintos (entregado frente a realmente usado)? Decisión v0.1: cada consumo se respalda con una salida y lo entregado se considera consumido; una devolución sería una entrada. Pendiente de confirmar.
 - D-04. ¿BitacoraCampo guarda sólo observaciones de campo, o una entrada por cada evento (labor completada, consumo, incidencia, cosecha)? Decisión v0.1: guarda las observaciones (RF-08) y la bitácora por parcela (RF-15) se arma como consulta que reúne observaciones, labores, consumos, incidencias y cosechas. Pendiente de confirmar.
@@ -204,7 +208,7 @@ RN-10 (la IA no prescribe dosis ni tratamientos) no produce una regla de integri
 | Predio, Parcela, Predio — Parcela | RF-01 |
 | Cultivo | RF-02 |
 | Campaña, Parcela — Campaña | RN-01, RN-09, RF-03, RF-16 |
-| Labor, Campaña — Labor | RN-02, RN-03, RF-04, RF-07 |
+| Labor, Campaña — Labor, Parcela — Labor | RN-02, RN-03, RF-04, RF-07 |
 | AsignacionLabor, Labor — Operario | RN-05, RF-05, RF-06 |
 | Insumo | RN-04, RN-07, RF-09 |
 | MovimientoInsumo | RF-10 |
@@ -232,10 +236,10 @@ RN-10 (la IA no prescribe dosis ni tratamientos) no produce una regla de integri
 Resultado: el flujo puede recorrerse completo con las entidades y relaciones de la versión 0.1. Los puntos frágiles son D-03 (entrega frente a consumo) y D-04 (cómo se construye la bitácora).
 
 ## 11. Pendientes para Clase 03
-- Confirmar con el docente D-01, D-03 y D-04, que son las dudas que más cambian el modelo.
+- Confirmar con el docente D-03 y D-04, que son las dudas que más cambian el modelo.
 - Revisar identificadores de negocio.
 - Transformar el modelo conceptual en modelo relacional.
 - Definir PK, FK y opcionalidad física.
-- Resolver las relaciones N:M (Labor — Operario y Labor — Insumo).
+- Resolver las relaciones N:M (Campaña — Parcela, Labor — Operario y Labor — Insumo).
 - Decidir si el stock se guarda o se calcula (D-07).
 - Revisar normalización inicial.

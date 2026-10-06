@@ -2,6 +2,8 @@
 
 Complementa a `der-logico-v0.1.md`. Describe qué significa cada atributo, si es obligatorio y por qué, su papel estructural, su dominio y la regla o requisito de la ficha que lo origina. Todavía no define tipos de datos; eso corresponde a la Clase 05.
 
+Cambio respecto a la primera versión: una campaña abarca varias parcelas; se agrega la tabla `campana_parcela`.
+
 Lectura de las columnas:
 - Obligatorio: "Sí" significa que no puede existir una fila válida sin ese dato; "No" significa que puede faltar legítimamente.
 - PK/FK/UQ: papel estructural del atributo. "UQ con ..." indica que forma parte de una unicidad compuesta.
@@ -67,27 +69,36 @@ Una fila representa un cultivo del catálogo.
 
 ## campana
 
-Una fila representa un ciclo productivo de un cultivo sobre una parcela.
+Una fila representa un ciclo productivo de un cultivo sobre una o varias parcelas.
 
 | Atributo | Significado | Obligatorio | PK/FK/UQ | Dominio/regla | Origen |
 |---|---|---|---|---|---|
 | campana_id | Identificador interno de la campaña. | Sí: identifica la fila. | PK | Generado por el sistema. | Sección F |
-| parcela_id | Parcela donde se desarrolla la campaña. | Sí: la campaña se crea sobre una parcela. | FK -> parcela; UQ con fecha_inicio | Debe existir en parcela. | RN-01, flujo J |
 | cultivo_id | Cultivo que se trabaja en la campaña. | Sí: la campaña necesita saber qué se cultiva. | FK -> cultivo | Debe existir en cultivo. | RF-03 |
 | nombre | Nombre con que el equipo identifica la campaña. | Sí: se muestra en agenda, bitácora y dashboard. | — | Texto no vacío. | RF-03 |
-| fecha_inicio | Día en que empieza la campaña. | Sí: sin ella no se puede controlar la superposición. | UQ con parcela_id | Menor o igual que fecha_fin_prevista. | RN-01 |
+| fecha_inicio | Día en que empieza la campaña. | Sí: sin ella no se puede controlar la superposición. | — | Menor o igual que fecha_fin_prevista. | RN-01 |
 | fecha_fin_prevista | Día en que se espera terminar. | Sí: define el período que ocupa la parcela. | — | Mayor o igual que fecha_inicio. | RN-01 |
 | fecha_cierre | Día en que la campaña se dio por finalizada. | No: no existe mientras la campaña está activa. | — | Obligatoria cuando estado es finalizada. | RN-06, RN-09 |
 | estado | Situación actual de la campaña. | Sí: decide si admite labores y cosecha. | — | activa o finalizada. | RN-06, RN-09 |
 
+## campana_parcela
+
+Una fila representa que una parcela participa en una campaña.
+
+| Atributo | Significado | Obligatorio | PK/FK/UQ | Dominio/regla | Origen |
+|---|---|---|---|---|---|
+| campana_parcela_id | Identificador interno de la participación. | Sí: identifica la fila y es a lo que apunta la labor. | PK | Generado por el sistema. | Diseño |
+| campana_id | Campaña que abarca la parcela. | Sí: la fila sólo existe para unir una campaña con una parcela. | FK -> campana; UQ con parcela_id | Debe existir en campana. | RN-01, flujo J |
+| parcela_id | Parcela que participa en la campaña. | Sí: misma razón. | FK -> parcela; UQ con campana_id | Debe existir en parcela. Una parcela no se repite dentro de la misma campaña ni participa en dos campañas con períodos superpuestos. | RN-01 |
+
 ## labor
 
-Una fila representa un trabajo de campo planificado dentro de una campaña.
+Una fila representa un trabajo de campo planificado en una parcela de una campaña.
 
 | Atributo | Significado | Obligatorio | PK/FK/UQ | Dominio/regla | Origen |
 |---|---|---|---|---|---|
 | labor_id | Identificador interno de la labor. | Sí: identifica la fila. | PK | Generado por el sistema. | Sección F |
-| campana_id | Campaña a la que pertenece la labor. | Sí: toda labor pertenece a una campaña. | FK -> campana | Debe existir en campana. La parcela se obtiene a través de la campaña. | RN-02 |
+| campana_parcela_id | Parcela de una campaña en la que se realiza la labor. | Sí: toda labor pertenece a una campaña y parcela. | FK -> campana_parcela | Debe existir en campana_parcela. De ahí se obtienen la campaña y la parcela. | RN-02 |
 | tipo_labor | Clase de trabajo: siembra, riego, fertilización, etc. | Sí: dice qué se va a hacer. | — | Texto controlado. | RF-04 |
 | descripcion | Detalle o indicaciones para ejecutar la labor. | No: el tipo puede ser suficiente. | — | Texto libre. | RF-04 |
 | fecha_programada | Día en que debe realizarse la labor. | Sí: se necesita para la agenda de campo. | — | Fecha válida. | RF-04, RF-06 |
@@ -156,8 +167,8 @@ Una fila representa una observación de campo anotada en la bitácora de una par
 |---|---|---|---|---|---|
 | bitacora_campo_id | Identificador interno de la entrada. | Sí: identifica la fila. | PK | Generado por el sistema. | Sección F |
 | parcela_id | Parcela sobre la que se hace la observación. | Sí: la bitácora se consulta por parcela. | FK -> parcela | Debe existir en parcela. | RF-15 |
-| campana_id | Campaña a la que se refiere la observación. | No: puede anotarse fuera de una campaña. | FK -> campana | Si tiene valor, la campaña debe ser de esa parcela. | RF-08 |
-| labor_id | Labor durante la que se hizo la observación. | No: no toda observación ocurre en una labor. | FK -> labor | Si tiene valor, la labor debe ser de esa campaña. | RF-08 |
+| campana_id | Campaña a la que se refiere la observación. | No: puede anotarse fuera de una campaña. | FK -> campana | Si tiene valor, la parcela debe participar en esa campaña. | RF-08 |
+| labor_id | Labor durante la que se hizo la observación. | No: no toda observación ocurre en una labor. | FK -> labor | Si tiene valor, la labor debe ser de esa campaña y de esa parcela. | RF-08 |
 | autor_id | Usuario que escribió la observación. | Sí: debe saberse quién la anotó. | FK -> usuario | Debe existir en usuario. | RF-08, RF-18 |
 | fecha_registro | Momento en que se anotó. | Sí: ordena la bitácora. | — | Fecha válida. | RF-15 |
 | descripcion | Texto de la observación. | Sí: una entrada vacía no aporta nada. | — | Texto no vacío. | RF-08 |
@@ -170,8 +181,8 @@ Una fila representa un hecho excepcional ocurrido en campo.
 |---|---|---|---|---|---|
 | incidencia_id | Identificador interno de la incidencia. | Sí: identifica la fila. | PK | Generado por el sistema. | Sección F |
 | parcela_id | Parcela donde ocurrió. | Sí: toda incidencia queda vinculada a una parcela. | FK -> parcela | Debe existir en parcela. | RN-08 |
-| campana_id | Campaña afectada. | No: puede ocurrir fuera de una campaña. | FK -> campana | Si tiene valor, la campaña debe ser de esa parcela. | RN-08 |
-| labor_id | Labor durante la que ocurrió. | No: no siempre hay una labor concreta. | FK -> labor | Si tiene valor, la labor debe ser de esa campaña. | RN-08 |
+| campana_id | Campaña afectada. | No: puede ocurrir fuera de una campaña. | FK -> campana | Si tiene valor, la parcela debe participar en esa campaña. | RN-08 |
+| labor_id | Labor durante la que ocurrió. | No: no siempre hay una labor concreta. | FK -> labor | Si tiene valor, la labor debe ser de esa campaña y de esa parcela. | RN-08 |
 | reportado_por_id | Usuario que reportó la incidencia. | Sí: debe saberse quién la reportó. | FK -> usuario | Debe existir en usuario. | RF-13, RF-18 |
 | fecha_incidencia | Momento en que ocurrió o se reportó. | Sí: forma parte de la trazabilidad. | — | Fecha válida. | RF-13 |
 | descripcion | Relato de lo ocurrido. | Sí: es el contenido de la incidencia. | — | Texto no vacío. | RF-13 |

@@ -6,10 +6,10 @@ Reglas de nombres y tipos que el equipo aplicará al pasar el diseño a PostgreS
 - Tablas: en español, en singular y en snake_case, sin prefijos. Ejemplos: `parcela`, `asignacion_labor`. Se escribe `campana` sin "ñ" para evitar problemas de codificación, igual que en la sección F de la ficha.
 - Columnas: en español y en snake_case, con nombre completo y sin abreviaturas. Las fechas llevan su significado: `fecha_programada`, `fecha_cosecha`.
 - PK: columna `<tabla>_id`; restricción `pk_<tabla>`. Ejemplo: `labor_id`, `pk_labor`.
-- FK: columna `<tabla_referenciada>_id`; restricción `fk_<tabla>_<referencia>`. Ejemplo: `campana_id`, `fk_labor_campana`. Cuando la tabla apunta a `usuario`, la columna indica el papel de la persona: `operario_id`, `asignado_por_id`, `registrado_por_id`, `autor_id`, `reportado_por_id`.
+- FK: columna `<tabla_referenciada>_id`; restricción `fk_<tabla>_<referencia>`. Ejemplo: `campana_id`, `fk_cosecha_campana`. Cuando la tabla apunta a `usuario`, la columna indica el papel de la persona: `operario_id`, `asignado_por_id`, `registrado_por_id`, `autor_id`, `reportado_por_id`.
 - UNIQUE: restricción `uq_<tabla>_<columnas>`. Ejemplo: `uq_parcela_predio_codigo`.
 - CHECK: restricción `ck_<tabla>_<regla>`. Ejemplo: `ck_labor_estado`, `ck_insumo_stock_no_negativo`.
-- Índices: `idx_<tabla>_<columnas>`. Ejemplo: `idx_labor_campana`. Sólo se crean con una consulta que los justifique.
+- Índices: `idx_<tabla>_<columnas>`. Ejemplo: `idx_cosecha_campana`. Sólo se crean con una consulta que los justifique.
 
 ## Tipos candidatos
 - Identificador técnico: BIGINT autogenerado (identity).
@@ -27,7 +27,7 @@ Reglas de nombres y tipos que el equipo aplicará al pasar el diseño a PostgreS
 |---|---|
 | ¿Usaremos BIGINT, UUID u otra estrategia? | BIGINT autogenerado en todas las tablas. |
 | ¿Por qué? | El sistema atiende a una sola unidad productiva con una sola base de datos; no hay que generar identificadores en varios lugares a la vez ni ocultarlos. BIGINT es simple, ordenado y fácil de depurar. |
-| ¿Qué claves naturales requieren además UNIQUE? | usuario.correo, insumo.codigo, rol.nombre, predio.nombre, (parcela.predio_id, parcela.codigo), (cultivo.nombre, cultivo.variedad). |
+| ¿Qué claves naturales requieren además UNIQUE? | usuario.correo, insumo.codigo, rol.nombre, predio.nombre, (parcela.predio_id, parcela.codigo), (cultivo.nombre, cultivo.variedad), (campana_parcela.campana_id, campana_parcela.parcela_id). |
 | ¿Existe algún dato de negocio mutable que NO debe ser PK? | Sí: el correo del usuario, el código de la parcela y el código del insumo pueden corregirse o cambiar. Por eso son UNIQUE y no PK. |
 
 ## Cantidades y mediciones

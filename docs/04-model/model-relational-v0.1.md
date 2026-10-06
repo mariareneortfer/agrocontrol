@@ -2,6 +2,8 @@
 
 Este documento transforma el modelo conceptual en tablas candidatas. Todavía no contiene SQL, tipos de datos ni entidades JPA.
 
+> Cambio respecto a la primera versión: el equipo confirmó que una campaña abarca varias parcelas. La relación campaña — parcela pasó de 1:N a N:M.
+
 ## 1. Fuente
 - Proyecto oficial: 16. AgroControl — Gestión de Lotes Agrícolas, Campañas, Labores, Insumos y Cosecha.
 - Modelo conceptual base: `model-conceptual-v0.1.md`.
@@ -18,7 +20,7 @@ Este documento transforma el modelo conceptual en tablas candidatas. Todavía no
 
 ## 3. Tablas candidatas núcleo
 
-Se eligieron 8 tablas porque son las que permiten recorrer el flujo crítico de principio a fin.
+Se eligieron 9 tablas porque son las que permiten recorrer el flujo crítico de principio a fin. La novena, campana_parcela, se agregó al confirmarse que una campaña abarca varias parcelas.
 
 ### parcela
 Propósito: una fila representa un lote agrícola concreto dentro de un predio.
@@ -34,10 +36,9 @@ Ejemplo de fila: la parcela "P-03 Lote Norte" de 4,5 hectáreas del predio "San 
 Reglas relacionadas: RN-01, RN-07 / RF-01, RF-15
 
 ### campana
-Propósito: una fila representa un ciclo productivo de un cultivo sobre una parcela durante un período.
-Ejemplo de fila: la campaña "Maíz verano 2026" en la parcela P-03, del 1/10/2026 al 28/2/2027, activa.
+Propósito: una fila representa un ciclo productivo de un cultivo sobre una o varias parcelas durante un período.
+Ejemplo de fila: la campaña "Maíz verano 2026", del 1/10/2026 al 28/2/2027, activa.
 - campana_id [PK]
-- parcela_id [FK -> parcela.parcela_id]
 - cultivo_id [FK -> cultivo.cultivo_id]
 - nombre
 - fecha_inicio
@@ -47,11 +48,20 @@ Ejemplo de fila: la campaña "Maíz verano 2026" en la parcela P-03, del 1/10/20
 
 Reglas relacionadas: RN-01, RN-06, RN-09 / RF-03, RF-16
 
-### labor
-Propósito: una fila representa un trabajo de campo planificado dentro de una campaña.
-Ejemplo de fila: la labor "Riego" programada para el 12/10/2026 en la campaña "Maíz verano 2026", en estado asignada.
-- labor_id [PK]
+### campana_parcela
+Propósito: una fila representa que una parcela participa en una campaña.
+Ejemplo de fila: la parcela P-03 participa en la campaña "Maíz verano 2026".
+- campana_parcela_id [PK]
 - campana_id [FK -> campana.campana_id]
+- parcela_id [FK -> parcela.parcela_id]
+
+Reglas relacionadas: RN-01, RN-02 / RF-03, flujo J
+
+### labor
+Propósito: una fila representa un trabajo de campo planificado en una parcela concreta de una campaña.
+Ejemplo de fila: la labor "Riego" programada para el 12/10/2026 en la parcela P-03 de la campaña "Maíz verano 2026", en estado asignada.
+- labor_id [PK]
+- campana_parcela_id [FK -> campana_parcela.campana_parcela_id]
 - tipo_labor
 - descripcion
 - fecha_programada
@@ -149,9 +159,10 @@ movimiento_insumo, bitacora_campo, incidencia y auditoria. Existen en el modelo 
 | Relación | Dónde queda la FK | Justificación |
 |---|---|---|
 | predio 1:N parcela | parcela.predio_id | Un predio tiene muchas parcelas; cada parcela pertenece a un predio. RF-01 |
-| parcela 1:N campana | campana.parcela_id | Una parcela participa en muchas campañas en el tiempo; cada campaña se hace sobre una parcela. RN-01, flujo J |
+| campana 1:N campana_parcela | campana_parcela.campana_id | Una campaña abarca una o varias parcelas. RN-01, flujo J |
+| parcela 1:N campana_parcela | campana_parcela.parcela_id | Una parcela participa en muchas campañas en el tiempo. RN-01 |
 | cultivo 1:N campana | campana.cultivo_id | Un cultivo se usa en muchas campañas; cada campaña trabaja un cultivo. RF-02, RF-03 |
-| campana 1:N labor | labor.campana_id | Una campaña tiene muchas labores; toda labor pertenece a una campaña. RN-02 |
+| campana_parcela 1:N labor | labor.campana_parcela_id | En cada parcela de una campaña se hacen muchas labores; toda labor pertenece a una campaña y parcela. RN-02 |
 | labor 1:N asignacion_labor | asignacion_labor.labor_id | Una labor puede tener varias asignaciones. RF-05 |
 | usuario 1:N asignacion_labor (operario) | asignacion_labor.operario_id | Un operario recibe muchas asignaciones. RN-05 |
 | usuario 1:N asignacion_labor (quien asigna) | asignacion_labor.asignado_por_id | Un jefe de campo realiza muchas asignaciones. RF-05, RF-18 |
@@ -164,6 +175,9 @@ movimiento_insumo, bitacora_campo, incidencia y auditoria. Existen en el modelo 
 
 ## 5. Relaciones N:M
 
+- campana N:M parcela → **campana_parcela**
+  - Una campaña abarca varias parcelas y una parcela participa en varias campañas a lo largo del tiempo (RN-01).
+  - Atributos propios de la relación: ninguno por ahora.
 - labor N:M usuario (operario) → **asignacion_labor**
   - Una labor puede asignarse a varios operarios y un operario puede tener varias labores (RF-05 dice "asignar operarios").
   - Atributos propios de la relación: fecha_asignacion, asignado_por_id.
@@ -172,7 +186,7 @@ movimiento_insumo, bitacora_campo, incidencia y auditoria. Existen en el modelo 
   - Atributos propios de la relación: cantidad, fecha_consumo, registrado_por_id.
   - Lleva PK técnica y no PK compuesta (labor_id, insumo_id), porque una misma labor puede registrar el mismo insumo más de una vez.
 
-No se detectó otra N:M en el núcleo. Parcela — campaña queda como 1:N por la decisión D-01 del modelo conceptual (ver P-01).
+No se detectó otra N:M en el núcleo.
 
 ## 6. Claves naturales / UNIQUE candidatas
 
@@ -180,7 +194,7 @@ No se detectó otra N:M en el núcleo. Parcela — campaña queda como 1:N por l
 - insumo.codigo — el almacén necesita distinguir un insumo de otro sin ambigüedad (RF-09, RF-10). Supuesto a confirmar: la ficha no menciona un código.
 - (parcela.predio_id, parcela.codigo) — el código de parcela no debe repetirse dentro del mismo predio (RF-01). Es UNIQUE compuesta porque la unicidad depende del predio.
 - (asignacion_labor.labor_id, asignacion_labor.operario_id) — un operario no debe quedar asignado dos veces a la misma labor (RF-05). Ver P-04.
-- (campana.parcela_id, campana.fecha_inicio) — dos campañas de una parcela no pueden empezar el mismo día (consecuencia de RN-01). No reemplaza la regla de no superposición.
+- (campana_parcela.campana_id, campana_parcela.parcela_id) — una parcela no puede figurar dos veces en la misma campaña (RN-01).
 - rol.nombre — no pueden existir dos roles con el mismo nombre (sección C).
 - predio.nombre — supuesto a confirmar.
 - (cultivo.nombre, cultivo.variedad) — evita cultivos duplicados en el catálogo (RF-02). Supuesto a confirmar.
@@ -192,9 +206,9 @@ No son UNIQUE: (consumo_labor.labor_id, consumo_labor.insumo_id) ni (cosecha.cam
 FK del núcleo:
 
 - parcela.predio_id — obligatoria: una parcela no existe sin predio (RF-01).
-- campana.parcela_id — obligatoria: la campaña se crea sobre una parcela (flujo J).
+- campana_parcela.campana_id y campana_parcela.parcela_id — obligatorias: la fila sólo existe para unir una campaña con una parcela (flujo J).
 - campana.cultivo_id — obligatoria: una campaña necesita saber qué se cultiva (D-02 del modelo conceptual).
-- labor.campana_id — obligatoria: RN-02.
+- labor.campana_parcela_id — obligatoria: RN-02.
 - usuario.rol_id — obligatoria: sin rol no se sabe qué puede hacer el usuario (sección C).
 - asignacion_labor.labor_id — obligatoria: la asignación sólo existe para una labor.
 - asignacion_labor.operario_id — obligatoria: la asignación nombra a un operario.
@@ -226,7 +240,8 @@ Restricciones candidatas sobre columnas:
 
 Reglas que no se resuelven con una restricción simple y se validarán en el backend:
 
-- Dos campañas de la misma parcela no pueden tener períodos superpuestos (RN-01).
+- Dos campañas que comparten una parcela no pueden tener períodos superpuestos (RN-01).
+- Toda campaña debe tener al menos una parcela (flujo J).
 - La cantidad de un consumo no puede superar insumo.stock_disponible en ese momento (RN-04, RF-12).
 - asignacion_labor.operario_id debe apuntar a un usuario con rol Operario (RN-05).
 - Sólo un operario asignado a la labor puede iniciarla, completarla o registrar consumos (RN-05).
@@ -236,7 +251,7 @@ Reglas que no se resuelven con una restricción simple y se validarán en el bac
 
 ## 9. Decisiones pendientes
 
-- P-01. Campaña sobre una o varias parcelas (D-01). Hoy es 1:N con campana.parcela_id. Si el docente confirma que una campaña abarca varias parcelas, se crea la tabla puente campana_parcela y labor necesitará además parcela_id.
+- P-01. Resuelta: una campaña abarca varias parcelas (D-01). Se creó la tabla puente campana_parcela y labor apunta a ella con campana_parcela_id.
 - P-02. insumo.stock_disponible: ¿se guarda o se calcula a partir de movimiento_insumo? (D-07). Hoy se guarda, y es una redundancia controlada que se revisará al modelar movimiento_insumo.
 - P-03. Unidad de medida del consumo. Hoy no se guarda en consumo_labor: se toma de insumo.unidad_medida. Confirmar si RN-07 exige guardarla en cada registro.
 - P-04. Reasignaciones. Con UNIQUE (labor_id, operario_id) no se puede quitar y volver a asignar al mismo operario conservando el historial. Si se necesita ese historial, la UNIQUE se retira o se agrega un estado a la asignación.
@@ -249,10 +264,10 @@ Reglas que no se resuelven con una restricción simple y se validarán en el bac
 ## 10. Revisión de normalización básica
 
 - Listas multivaluadas detectadas/corregidas: los operarios de una labor no se guardan como lista dentro de labor ("3, 5, 9"); cada asignación es una fila de asignacion_labor. Los insumos usados en una labor tampoco se guardan como lista; cada uno es una fila de consumo_labor.
-- Columnas repetitivas detectadas/corregidas: no existen columnas como operario1/operario2 ni insumo1/insumo2/cantidad1/cantidad2. Una campaña con varias cosechas parciales usa varias filas de cosecha, no columnas cosecha1/cosecha2.
+- Columnas repetitivas detectadas/corregidas: no existen columnas como parcela1/parcela2 en campana, ni operario1/operario2 ni insumo1/insumo2/cantidad1/cantidad2. Una campaña con varias cosechas parciales usa varias filas de cosecha, no columnas cosecha1/cosecha2.
 - Datos redundantes detectados/corregidos:
-  - labor no tiene parcela_id: la parcela de una labor se obtiene por labor → campana → parcela. Así se cumple RN-02 sin riesgo de que la labor apunte a una parcela distinta a la de su campaña.
+  - labor no guarda campana_id y parcela_id por separado: guarda campana_parcela_id. Así se cumple RN-02 sin riesgo de que la labor apunte a una parcela que no participa en su campaña.
   - consumo_labor no copia el nombre ni la unidad del insumo: se obtienen por insumo_id.
-  - asignacion_labor no copia el nombre del operario; campana no copia el nombre de la parcela ni del cultivo; usuario no copia el nombre del rol.
+  - asignacion_labor no copia el nombre del operario; campana no copia el nombre del cultivo; campana_parcela no copia el nombre de la parcela; usuario no copia el nombre del rol.
 - Atributos que dependen de otra entidad: unidad_medida del consumo depende del insumo y no del consumo, por eso está en insumo. El estado es una columna de labor y de campana, no una tabla.
 - Redundancia que se mantiene a propósito: insumo.stock_disponible (ver P-02).

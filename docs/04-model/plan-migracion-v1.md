@@ -2,7 +2,7 @@
 
 Plan de la primera migración de base de datos.
 
-Actualización de la Clase 06: la guía pide implementar primero entre 4 y 6 tablas núcleo. Por eso V1 se redujo a 6 tablas y el resto del flujo crítico pasa a V2. El script está en `backend/src/main/resources/db/migration/V1__init_core.sql`.
+Actualización de la Clase 06: la guía pide implementar primero entre 4 y 6 tablas núcleo. Por eso V1 se redujo a 6 tablas y el resto del flujo crítico pasa a V2. El script está en `agrocontrol-backend/src/main/resources/db/migration/V1__init_core.sql`.
 
 ## Objetivo
 Crear el núcleo que permite representar el inicio del flujo crítico de la ficha: el jefe crea una campaña sobre una o varias parcelas y planifica labores.

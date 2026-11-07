@@ -113,7 +113,9 @@ La guía pide entre 4 y 6 tablas núcleo. Se eligieron las 6 que permiten repres
 5. campana_parcela (depende de campana y parcela)
 6. labor (depende de campana_parcela)
 
-Script: `backend/src/main/resources/db/migration/V1__init_core.sql`
+Script: `agrocontrol-backend/src/main/resources/db/migration/V1__init_core.sql`
+
+Nota: en la Clase 06 el script estaba en `backend/src/main/resources/db/migration/`. En el Capítulo 03 se movió dentro del proyecto Spring Boot `agrocontrol-backend`, que es el backend real del sistema.
 
 ## 4. PK y FK
 

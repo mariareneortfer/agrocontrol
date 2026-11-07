@@ -1,0 +1,7 @@
+### Health
+GET http://localhost:8080/api/health
+Accept: application/json
+
+### Demo entidad padre (Predio)
+GET http://localhost:8080/api/farms/demo
+Accept: application/json

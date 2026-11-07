@@ -1,92 +1,119 @@
-# Capítulo 01 - Java esencial — AgroControl
+# AgroControl — Laboratorio de Java 21
 
-Laboratorio de Java 21 sin Spring Boot, sin JPA y sin conexión a PostgreSQL. Representa en Java dos tablas del diseño físico de AgroControl y la relación 1:N entre ellas.
+Laboratorio de Java 21 puro, sin Spring Boot, sin JPA y sin conexión a PostgreSQL. Representa en Java dos tablas del diseño físico de AgroControl y la relación 1:N entre ellas.
 
-## Datos del laboratorio
 - Proyecto oficial: 16. AgroControl — Gestión de Lotes Agrícolas, Campañas, Labores, Insumos y Cosecha
-- Nombre del proyecto IntelliJ: `agrocontrol-backend-lab`
+- Proyecto IntelliJ: `agrocontrol-backend-lab`, con JDK 21
 - Package base: `com.agrocontrol`
-- Tabla/entidad padre A: `predio` → clase `Predio`
-- Nombre de módulo A: `farm` (predio, propiedad agrícola)
-- Tabla/entidad dependiente B: `parcela` → clase `Parcela`
-- Nombre de módulo B: `plot` (parcela; es el mismo término que usa la API de la ficha: `/plots`)
-- FK que conecta B con A: `parcela.predio_id -> predio.predio_id`
 
-## Entidades elegidas
-- Tabla padre: `predio` (PK `predio_id`)
-- Tabla dependiente: `parcela` (PK `parcela_id`)
-- Relación: 1:N — un predio tiene muchas parcelas; cada parcela pertenece a un predio.
-- FK: `parcela.predio_id` (`fk_parcela_predio` en `V1__init_core.sql`)
+## Capítulo 02 - Java 21
 
-Se eligió esta pareja porque es la relación 1:N más directa del diseño: `labor` no apunta directamente a `campana`, sino a la tabla puente `campana_parcela`.
+### Entidad padre
+`Predio` (tabla `predio`, PK `predio_id`), en el módulo `farm`. Atributo UNIQUE: `nombre` (`uq_predio_nombre`).
 
-## Estructura
+### Entidad dependiente
+`Parcela` (tabla `parcela`, PK `parcela_id`), en el módulo `plot`. Atributo UNIQUE dentro del predio: `codigo` (`uq_parcela_predio_codigo`).
+
+### Relación
+1:N porque un predio tiene muchas parcelas y cada parcela pertenece a un solo predio. En PostgreSQL está en la FK `parcela.predio_id`. En Java aparece de dos formas:
+- En el hijo: `Parcela` guarda `predioId`, igual que la FK.
+- En el padre: `Predio` tiene una `List<Parcela>` privada y el método `agregarParcela()`, que comprueba que la parcela apunte a ese predio y que su código no se repita.
+
+### Estructura
 ```text
-agrocontrol-backend-lab
-└── src
-    └── com
-        └── agrocontrol
-            ├── Main.java
-            ├── farm
-            │   ├── domain
-            │   │   ├── Predio.java
-            │   │   └── PredioRepository.java
-            │   └── exception
-            └── plot
-                ├── domain
-                │   └── Parcela.java
-                └── exception
+src/com/agrocontrol
+├── Main.java
+├── farm
+│   ├── domain
+│   │   ├── Predio.java
+│   │   ├── exception
+│   │   │   ├── PredioNoEncontradoException.java
+│   │   │   ├── NombrePredioDuplicadoException.java
+│   │   │   └── CodigoParcelaDuplicadoException.java
+│   │   └── port
+│   │       └── PredioRepository.java
+│   ├── application
+│   │   └── PredioService.java
+│   └── infrastructure
+│       └── memory
+│           └── PredioRepositoryEnMemoria.java
+└── plot
+    ├── domain
+    │   └── Parcela.java
+    └── application
+        └── command
+            └── RegistrarParcelaCommand.java
 ```
 
-Las carpetas `exception` están preparadas para el Capítulo 02. Tienen un `package-info.java` para que Git las conserve, porque Git no guarda carpetas vacías.
+Respecto al Capítulo 01, `PredioRepository` se movió a `domain/port` y las excepciones se movieron a `domain/exception`, siguiendo la estructura de la guía.
 
-## Clases Java
-- `Predio`: entidad padre. Atributos `private`, constructor que valida el nombre y una lista privada de parcelas.
-- `Parcela`: entidad dependiente. Atributos `private` y constructor que valida código, nombre, superficie y unidad.
-- `PredioRepository`: interface de contrato con `guardar` y `buscarPorId`.
-- `Main`: crea un predio con dos parcelas, las relaciona y prueba las reglas.
+### Interfaz (contrato)
+`PredioRepository` declara `guardar`, `buscarPorId`, `listarTodos` y `existePorNombre`. No dice dónde se guardan los datos: no menciona PostgreSQL, SQL ni JPA. La tecnología se decide fuera, en `infrastructure`.
 
-## Cómo se representó el 1:N
-| En PostgreSQL | En Java |
+`PredioService` depende de la interfaz `PredioRepository`, no de `PredioRepositoryEnMemoria`. Cuando llegue PostgreSQL se escribirá otra implementación del mismo contrato, y el servicio no cambiará.
+
+### Colección elegida
+- **Map** en `PredioRepositoryEnMemoria` (`LinkedHashMap<Long, Predio>`), porque la operación principal es buscar un predio por su id: el id es la clave, como la PK en PostgreSQL. `LinkedHashMap` conserva el orden de registro.
+- **List** en `Predio` para sus parcelas, porque importa el orden en que se agregaron. Los duplicados no se evitan con la colección, sino con la regla de `agregarParcela()`, que compara códigos.
+- **Set** no se usó: ninguna operación necesita solo un conjunto de valores distintos sin orden ni clave.
+
+### Optional
+`buscarPorId` puede no encontrar el predio, así que devuelve `Optional<Predio>` en vez de `null`. El servicio lo resuelve con `orElseThrow`, que lanza `PredioNoEncontradoException` cuando el predio no existe.
+
+### Excepciones propias
+- `PredioNoEncontradoException`: se pide un predio con un id que no existe. Por ejemplo, `obtener(999L)` o registrar una parcela en el predio 999.
+- `NombrePredioDuplicadoException`: se registra un predio con un nombre que ya existe, sin importar mayúsculas (regla `uq_predio_nombre`).
+- `CodigoParcelaDuplicadoException`: se agrega a un predio una parcela con un código que ya tiene (regla `uq_parcela_predio_codigo`).
+
+Los datos inválidos de un solo objeto, como una superficie 0 o un nombre vacío, siguen usando `IllegalArgumentException` en los constructores.
+
+### Enum
+No se creó un enum en este capítulo. Las tablas `predio` y `parcela` no tienen ningún CHECK con un conjunto cerrado de valores, y la guía pide no inventar estados. Los estados reales de AgroControl están en otras tablas y serán enums cuando se modelen:
+- `EstadoCampana`: `ACTIVA`, `FINALIZADA` (`ck_campana_estado`)
+- `EstadoLabor`: `PLANIFICADA`, `ASIGNADA`, `EN_EJECUCION`, `COMPLETADA`, `CANCELADA` (`ck_labor_estado`, RN-03)
+
+### Record
+`RegistrarParcelaCommand` agrupa solo los datos que necesita la operación "registrar parcela": `predioId`, `codigo`, `nombre`, `superficie` y `unidadSuperficie`. No lleva `id`, porque lo genera el sistema, ni `ubicacion_referencial`, porque es opcional. Es inmutable y Java genera su constructor y sus métodos de lectura.
+
+### Relación con PostgreSQL
+| PostgreSQL | Java en este capítulo |
 |---|---|
-| La FK `parcela.predio_id` está en la tabla hija. | El padre `Predio` tiene `private final List<Parcela> parcelas`. |
-| Se relacionan al insertar la parcela con su `predio_id`. | Se relacionan con el método de negocio `predio.agregarParcela(parcela)`. |
-| `UNIQUE (predio_id, codigo)` impide repetir el código en el predio. | `agregarParcela()` rechaza una parcela con un código que ya existe en ese predio. |
+| PRIMARY KEY `predio_id` | `id` del objeto y clave del `Map` |
+| UNIQUE `predio.nombre` | `existePorNombre()` antes de guardar, en `PredioService.registrar()` |
+| UNIQUE `(predio_id, codigo)` | regla de `Predio.agregarParcela()` |
+| FOREIGN KEY `parcela.predio_id` | `predioId` dentro de `Parcela` |
+| CHECK `superficie > 0` | validación del constructor de `Parcela` |
+| NOT NULL | validaciones de los constructores |
+| Tabla | clase de dominio; todavía no es `@Entity` |
 
-## Reglas implementadas
-- **Código único dentro del predio** (`uq_parcela_predio_codigo`, RF-01): `Predio.agregarParcela()` lanza `IllegalStateException` si el código ya existe en ese predio.
-- **Superficie mayor que cero** (`ck_parcela_superficie_positiva`, RN-07): el constructor de `Parcela` lanza `IllegalArgumentException`.
-- **Unidad explícita** (RN-07): el constructor de `Parcela` exige la unidad de superficie.
-- **Nombre obligatorio** (NOT NULL): los constructores de `Predio` y `Parcela` lo exigen.
+### Qué cambiará con PostgreSQL
+Se agregará una nueva implementación de `PredioRepository` en `infrastructure` y `Main` dejará de usar `PredioRepositoryEnMemoria`. El dominio, el contrato y el servicio no tienen que cambiar. El contador temporal de ids de parcela del servicio desaparecerá, porque los ids los generará la columna IDENTITY.
 
-## Resultado de ejecutar Main
+### Evidencia
+Salida de consola al ejecutar `Main`:
+
 ```text
-=== Relacion 1:N Predio -> Parcela ===
+=== Pruebas positivas ===
+Predios registrados: 2
+Obtener(1): Predio{id=1, nombre='San Isidro', parcelas=0}
 Predio{id=1, nombre='San Isidro', parcelas=2}
-  - Parcela{codigo='P-01', nombre='Lote Norte', superficie=4.50 hectarea}
-  - Parcela{codigo='P-02', nombre='Lote Sur', superficie=3.25 hectarea}
+  - Parcela{id=1, predioId=1, codigo='P-01', nombre='Lote Norte', superficie=4.50 hectarea}
+  - Parcela{id=2, predioId=1, codigo='P-02', nombre='Lote Sur', superficie=3.25 hectarea}
+Predio{id=2, nombre='La Esperanza', parcelas=1}
+  - Parcela{id=3, predioId=2, codigo='P-01', nombre='Lote Unico', superficie=2.00 hectarea}
 
-=== Pruebas de reglas ===
-Rechazado (codigo repetido): Ya existe la parcela P-01 en el predio San Isidro
-Rechazado (superficie): La superficie debe ser mayor que cero
-Rechazado (lista de solo lectura): no se puede modificar desde fuera
+=== Pruebas negativas (errores controlados) ===
+ERROR CONTROLADO: No existe el predio con id: 999
+ERROR CONTROLADO: Ya existe un predio con el nombre: san isidro
+ERROR CONTROLADO: Ya existe la parcela P-01 en el predio San Isidro
+ERROR CONTROLADO: No existe el predio con id: 999
+ERROR CONTROLADO: La superficie debe ser mayor que cero
 
-Total de parcelas en San Isidro: 2
+Parcelas en San Isidro: 2
 ```
 
-## Comparación PostgreSQL – Java
-| Pregunta | Respuesta |
-|---|---|
-| ¿Cuál es la tabla padre? | `predio` |
-| ¿Cuál es la tabla dependiente? | `parcela` |
-| ¿Dónde está la FK en PostgreSQL? | En `parcela.predio_id` |
-| ¿Cómo representaste el 1:N en Java? | Con una `List<Parcela>` privada dentro de `Predio` y el método `agregarParcela()` |
-| ¿Qué regla protege tu método? | Que el código de parcela no se repita dentro del mismo predio |
-| ¿Qué enum creaste y de qué CHECK/regla proviene? | Ninguno en este capítulo (ver Decisiones) |
-
-## Decisiones
-- **¿Por qué no hay enum?** Las tablas `predio` y `parcela` no tienen ningún CHECK con un conjunto cerrado de valores, y la guía pide no inventar enums. Los enums reales de AgroControl son `EstadoCampana` (`ck_campana_estado`: activa, finalizada) y `EstadoLabor` (`ck_labor_estado`: planificada, asignada, en_ejecucion, completada, cancelada). Aparecerán cuando se modelen campaña y labor.
-- **¿Por qué la colección es privada?** Para que nadie agregue parcelas sin pasar por `agregarParcela()`, que es donde se valida el código repetido. `getParcelas()` devuelve una lista de solo lectura: si alguien intenta modificarla, Java lanza `UnsupportedOperationException`. `Main` lo comprueba.
-- **¿Por qué `BigDecimal` en la superficie?** Porque en PostgreSQL es `NUMERIC(10,2)`, un valor exacto. `double` puede introducir errores de redondeo.
-- **¿Por qué no hay setters?** Los atributos son `final` y se fijan en el constructor, donde se validan. Así un objeto no puede quedar en un estado inválido.
-- **¿Qué NO implementamos todavía?** Spring Boot, JPA, `@Entity`, `JpaRepository`, controladores ni conexión a PostgreSQL desde Java. `PredioRepository` solo declara el contrato; no tiene implementación.
+## Capítulo 01 - Java esencial (resumen)
+- Se eligió la relación `predio` 1:N `parcela` porque es la más directa del diseño: `labor` no apunta a `campana`, sino a la tabla puente `campana_parcela`.
+- Atributos `private` y `final`, validados en el constructor, sin setters: un objeto no puede quedar en un estado inválido.
+- `getParcelas()` devuelve una lista de solo lectura, para que nadie se salte la regla de `agregarParcela()`.
+- `superficie` es `BigDecimal` porque en PostgreSQL es `NUMERIC(10,2)`, un valor exacto.

@@ -1,0 +1,4 @@
+# Archivos que genera IntelliJ y que no se suben a Git
+out/
+.idea/
+*.iml

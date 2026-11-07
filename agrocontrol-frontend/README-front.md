@@ -3,6 +3,96 @@
 Frontend de **AgroControl** (proyecto 16) con **React + TypeScript + Vite**, creado y ejecutado desde **WebStorm**.
 Consumirá más adelante la API REST del backend Spring Boot (`agrocontrol-backend`, puerto 8080).
 
+## Guía 02 - Navegación, layout principal y menú
+
+Se instaló **React Router** (`npm install react-router`) y se armó un layout administrativo: menú lateral, cabecera y una zona central que cambia según la URL.
+
+### Equivalencias con el ejemplo del profesor
+| Profesor (ParkFlow360) | AgroControl |
+|---|---|
+| `/clientes` → `ClientesPage.tsx` | `/predios` → `features/predios/pages/PrediosPage.tsx` |
+| `/vehiculos` → `VehiculosPage.tsx` | `/parcelas` → `features/parcelas/pages/ParcelasPage.tsx` |
+| Marca "P - ParkFlow360" | Marca "A - AgroControl, Gestión agrícola" |
+| Colores azules | Colores verdes (tema agrícola) |
+
+### Archivos y responsabilidades
+| Archivo | Responsabilidad |
+|---|---|
+| `src/main.tsx` | Monta React en `#root` y envuelve todo con `BrowserRouter` |
+| `src/app/App.tsx` | Solo delega en `AppRouter` |
+| `src/routes/AppRouter.tsx` | Declara qué página corresponde a cada URL |
+| `src/layouts/MainLayout.tsx` | Estructura fija: `Sidebar` + `Header` + `Outlet` |
+| `src/components/common/Sidebar.tsx` | Menú con `NavLink` y marca la opción activa |
+| `src/components/common/Header.tsx` | Cabecera común |
+| `src/pages/DashboardPage.tsx` | Inicio (`/`) |
+| `src/pages/AcercaPage.tsx` | Acerca (`/acerca`), actividad práctica |
+| `src/pages/NotFoundPage.tsx` | Cualquier ruta inexistente (`*`) |
+| `src/features/predios/pages/PrediosPage.tsx` | `/predios` |
+| `src/features/parcelas/pages/ParcelasPage.tsx` | `/parcelas` |
+
+### Rutas
+| URL | Route | Página |
+|---|---|---|
+| `/` | `index` | `DashboardPage` |
+| `/predios` | `path="predios"` | `PrediosPage` |
+| `/parcelas` | `path="parcelas"` | `ParcelasPage` |
+| `/acerca` | `path="acerca"` | `AcercaPage` |
+| cualquier otra | `path="*"` | `NotFoundPage` |
+
+### Pruebas
+| # | Acción | Resultado esperado |
+|---|---|---|
+| 1 | Abrir `/` | Se ve el panel principal e "Inicio" está activo |
+| 2 | Clic en Predios | Se ve `PrediosPage` y "Predios" está activo |
+| 3 | Clic en Parcelas | Se ve `ParcelasPage` y "Parcelas" está activo |
+| 4 | Escribir `/ruta-inexistente` | Se ve la página 404 dentro del mismo layout |
+| 5 | Botones Atrás / Adelante | Cambia la página sin perder el menú |
+| 6 | Achicar la ventana (menos de 820 px) | El menú se acomoda en una fila horizontal |
+
+### Actividad práctica
+1. **AcercaPage.tsx** creada en `src/pages`, porque es una página global y no de un módulo.
+2. **Ruta `/acerca`** agregada dentro de `MainLayout` en `AppRouter.tsx`.
+3. **"Acerca" en el menú**: se agregó `{ to: '/acerca', label: 'Acerca' }` a `menuItems` en `Sidebar.tsx`.
+4. **Opción activa visible**: `.sidebar__link--active` usa fondo blanco, texto verde, letra más gruesa y una barra verde a la izquierda. Las demás opciones no cambian.
+5. **`path="predios"` → `path="predios2"`**: al hacer clic en Predios (`/predios`), ninguna ruta coincide y aparece la página 404. Escribiendo `/predios2` sí aparece `PrediosPage`, pero el menú ya no la marca como activa. Después se restauró el código.
+6. **Sin `<Outlet />`**: el menú y la cabecera se siguen viendo, pero la zona central queda vacía en todas las rutas. El layout no tiene dónde dibujar la página hija. Después se restauró el código.
+7. **Flujo desde un clic en Predios hasta PrediosPage (8 líneas):**
+   1. El usuario hace clic en "Predios" del `Sidebar`.
+   2. `NavLink` cambia la URL a `/predios` sin pedir una página nueva al servidor.
+   3. `BrowserRouter` detecta que cambió la dirección.
+   4. `Routes` en `AppRouter` busca la `Route` que coincide: `path="predios"`.
+   5. Esa ruta está dentro de la ruta de `MainLayout`, así que el layout se mantiene.
+   6. `MainLayout` sigue mostrando `Sidebar` y `Header`.
+   7. `<Outlet />` dibuja `PrediosPage` en la zona central.
+   8. `NavLink` recibe `isActive = true` y pinta "Predios" como opción activa.
+
+### Respuestas para la defensa oral
+1. **SPA:** es una aplicación de una sola página. El navegador la carga una vez y después solo cambia la parte que hace falta, así que la navegación es rápida.
+2. **React Router:** relaciona cada URL con un componente y permite navegar sin recargar.
+3. **BrowserRouter cerca de la raíz:** así todos los componentes que están dentro (rutas, `NavLink`, `Link`) pueden usar la navegación.
+4. **main.tsx:** es el punto de entrada. Monta React y configura `BrowserRouter`.
+5. **App.tsx:** es la raíz de la aplicación. Solo delega en `AppRouter`.
+6. **AppRouter separado:** si mañana agrego rutas, solo cambio ese archivo. `App.tsx` queda limpio.
+7. **Routes:** mira la URL actual y elige la `Route` que coincide.
+8. **Route:** une un `path` con el componente (`element`) que se debe mostrar.
+9. **Route index:** es la ruta por defecto de su padre; aquí representa `/`.
+10. **`path="*"`:** atrapa cualquier dirección que no coincidió con las demás (404).
+11. **Rutas sin `/` al inicio:** son relativas a su ruta padre. `predios` dentro de la ruta del layout (que está en `/`) se convierte en `/predios`.
+12. **Layout:** es la estructura fija de la pantalla. `MainLayout` lo usan todas las páginas, por eso no pertenece a `features/predios`.
+13. **Outlet:** es el lugar donde se dibuja la ruta hija que coincide.
+14. **Sin Outlet:** se ve el menú y la cabecera, pero ninguna página.
+15. **Link vs NavLink:** los dos navegan sin recargar. `NavLink` además sabe si su ruta es la actual y se puede pintar diferente.
+16. **isActive:** vale `true` cuando la URL actual coincide con el `to` del `NavLink`.
+17. **¿Por qué no `<a href>`?** Un `<a href>` normal pide la página de nuevo al servidor y React se reinicia. `NavLink` cambia la URL sin recargar.
+18. **Flujo completo:** ver la actividad 7.
+19. **Agregar `/reportes`:** se modifica `AppRouter.tsx` (nueva `Route`) y se crea la página `ReportesPage.tsx`.
+20. **Reportes en el menú:** además de lo anterior, se modifica `Sidebar.tsx` (agregar el ítem a `menuItems`).
+21. **¿Por qué todavía no el backend?** Primero hay que resolver la navegación sola. Si algo falla, así es más fácil saber si es el router o la API.
+22. **¿Cómo sé que no recargó?** El ícono de recargar del navegador no gira, la pestaña Network de las DevTools no pide un nuevo documento HTML y el menú no parpadea.
+23. **URL vs archivo:** `/predios` es la dirección que ve el usuario. `PrediosPage.tsx` es el componente. La unión entre los dos la hace la `Route` en `AppRouter`.
+24. **¿Por qué un 404 explícito?** Sin él, una URL mal escrita mostraría una pantalla vacía sin explicación. Con él, el usuario entiende qué pasó y puede volver al inicio.
+25. **CSS responsive:** en pantallas angostas (menos de 820 px) el menú pasa de columna a fila horizontal, así la aplicación se puede usar en celular o en una ventana pequeña.
+
 ## Guía 01 - Estructuración del frontend
 
 ### Equivalencias con el ejemplo del profesor

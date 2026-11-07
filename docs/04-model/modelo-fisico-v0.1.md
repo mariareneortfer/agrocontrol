@@ -308,7 +308,7 @@ Diseño físico preparado para PostgreSQL. Deriva de `der-logico-v0.1.md` y `dic
 
 ### Decisiones
 - `clasificacion` es NULL hasta que alguien, o la IA, la etiqueta. Sólo clasifica; no recomienda tratamientos.
-- Queda fuera de la migración V1.
+- Queda fuera de las primeras migraciones (ver `plan-migracion-v1.md`).
 
 ### Regla que NO se resuelve sólo con constraint simple
 - RN-08: coherencia entre parcela, campaña y labor indicadas.
@@ -328,7 +328,7 @@ Diseño físico preparado para PostgreSQL. Deriva de `der-logico-v0.1.md` y `dic
 
 ### Decisiones
 - `registro_id` no es FK porque apunta a filas de tablas distintas según `tabla_afectada`.
-- Queda fuera de la migración V1.
+- Queda fuera de las primeras migraciones (ver `plan-migracion-v1.md`).
 
 ### Regla que NO se resuelve sólo con constraint simple
 - Las filas de auditoría no se modifican ni se eliminan.
@@ -371,4 +371,4 @@ Diseño físico preparado para PostgreSQL. Deriva de `der-logico-v0.1.md` y `dic
 Brechas registradas:
 - La cosecha se registra contra la campaña (RN-06). Con varias parcelas por campaña, falta confirmar si además debe indicar de cuál parcela proviene.
 - Si el docente define que la entrega del almacén y el consumo del operario son registros distintos, el paso "almacén entrega insumo" necesitará que movimiento_insumo apunte directamente a la labor.
-- `incidencia` y `auditoria` no participan en el flujo crítico; son necesarias porque la ficha las exige (RF-13, RF-18, sección F) y entran en la migración V2.
+- `incidencia` y `auditoria` no participan en el flujo crítico; son necesarias porque la ficha las exige (RF-13, RF-18, sección F) y entran en una migración posterior a V1.

@@ -1,6 +1,6 @@
 # agrocontrol-backend
 
-Backend real de AgroControl con Spring Boot, Maven y Java 21. Desde el Capítulo 05 está conectado a PostgreSQL con JPA/Hibernate, y desde el Capítulo 06 el módulo `farm` sigue la arquitectura hexagonal.
+Backend real de AgroControl con Spring Boot, Maven y Java 21. Desde el Capítulo 05 está conectado a PostgreSQL con JPA/Hibernate, desde el Capítulo 06 sigue la arquitectura hexagonal y desde el Capítulo 08 tiene manejo de errores único y transacciones.
 
 | Dato | Respuesta |
 |---|---|
@@ -8,6 +8,94 @@ Backend real de AgroControl con Spring Boot, Maven y Java 21. Desde el Capítulo
 | Entidad padre 1:N | Predio (tabla `predio`), módulo `farm` |
 | Entidad dependiente N | Parcela (tabla `parcela`), módulo `plot` |
 | Relación | 1 predio tiene muchas parcelas (FK `parcela.predio_id`) |
+
+## Capítulo 08 - Errores profesionales, validaciones y transacciones
+
+Todos los errores de la API responden con **la misma forma** (`ApiError`). Un solo `@RestControllerAdvice` (`GlobalExceptionHandler`) decide qué código HTTP corresponde a cada error, y los controllers no tienen `try/catch`.
+
+### Equivalencias con el ejemplo del profesor
+| Profesor (ParkFlow) | AgroControl |
+|---|---|
+| `com.parkflow` | `com.agrocontrol` |
+| Cliente / Vehiculo | Predio (`farm`) / Parcela (`plot`) |
+| `ClienteNoEncontradoException` | `PredioNoEncontradoException` |
+| `PlacaDuplicadaException` | `CodigoParcelaDuplicadoException` |
+| `RegistrarVehiculoCommand` | `RegistrarParcelaCommand` |
+| `/api/vehicles` | `/api/plots` |
+
+### Formato único de error: `ApiError`
+```json
+{
+  "timestamp": "2026-11-07T21:03:24Z",
+  "status": 404,
+  "error": "Not Found",
+  "message": "No existe el predio con id: 999",
+  "path": "/api/plots",
+  "fieldErrors": {}
+}
+```
+`fieldErrors` solo se llena en los errores de validación (400), con un mensaje por campo.
+
+### Qué código devuelve cada error (`shared/web/GlobalExceptionHandler`)
+| Excepción | HTTP | Cuándo pasa |
+|---|---|---|
+| `MethodArgumentNotValidException` | 400 | Falla una validación del DTO (`@NotNull`, `@Positive`...) |
+| `HttpMessageNotReadableException` | 400 | El JSON está mal escrito o un tipo no calza (`"superficie": "mucho"`) |
+| `MethodArgumentTypeMismatchException` | 400 | Un parámetro de la URL no es del tipo esperado (`/api/plots/abc`) |
+| `IllegalArgumentException` | 400 | Regla del dominio (`Parcela`: superficie > 0) |
+| `PredioNoEncontradoException` | 404 | El predio no existe |
+| `NoResourceFoundException` | 404 | La ruta no existe |
+| `HttpRequestMethodNotSupportedException` | 405 | Método HTTP no permitido |
+| `PredioDuplicadoException` | 409 | Nombre de predio repetido |
+| `CodigoParcelaDuplicadoException` | 409 | Código de parcela repetido en el mismo predio |
+| `DataIntegrityViolationException` | 409 | PostgreSQL rechaza el dato (UNIQUE, FK o CHECK) |
+| `Exception` (cualquier otra) | 500 | Error inesperado: mensaje genérico; el detalle solo va al log |
+
+Los tres handlers anteriores (`ValidacionExceptionHandler`, `PredioExceptionHandler`, `ParcelaExceptionHandler`) se eliminaron. Si dos `@RestControllerAdvice` atienden la misma excepción, Spring no sabe cuál usar.
+
+### Dónde se valida cada cosa
+| Capa | Qué valida | Ejemplo AgroControl |
+|---|---|---|
+| DTO (`CrearParcelaRequest`) | Forma del dato que llega | `predioId` obligatorio, `superficie` positiva con 2 decimales, `codigo` no vacío |
+| Dominio (`Parcela`) | Reglas propias del objeto | Código en mayúsculas, superficie > 0 |
+| Servicio (`ParcelaService`) | Reglas que necesitan consultar datos | El predio existe y el código no se repite en ese predio |
+| PostgreSQL | Última defensa | `fk_parcela_predio`, `uq_parcela_predio_codigo`, `ck_parcela_superficie_positiva` |
+
+### `@Transactional`
+- `ParcelaService.registrar` y `PredioService.registrar` son `@Transactional`. Registrar una parcela consulta el predio, revisa si el código se repite y guarda; todo eso es una sola operación. Si algo falla, no queda nada a medias en la base de datos.
+- Las consultas (`buscarPorId`, `listar`, `listarPorPredio`) son `@Transactional(readOnly = true)`, porque solo leen datos.
+- `@Transactional` va en el servicio (la capa de aplicación), no en el controller ni en el repositorio.
+
+### `RegistrarParcelaCommand`
+El controller ya no arma un objeto `Parcela`. Convierte el DTO en un `RegistrarParcelaCommand` (`ParcelaWebMapper.toCommand`) y se lo pasa al caso de uso. El servicio valida y recién después crea la `Parcela`.
+
+### Pruebas (PowerShell, dentro de `agrocontrol-backend`)
+| # | Caso | Comando | Esperado |
+|---|---|---|---|
+| 1 | Parcela válida P-05 | `curl.exe -i -X POST http://localhost:8080/api/plots -H "Content-Type: application/json" -d "@http/parcela-valida-cap08.json"` | 201 |
+| 2 | Superficie 0 | `... -d "@http/parcela-superficie-invalida.json"` | 400 con `fieldErrors.superficie` |
+| 3 | Predio 999 | `... -d "@http/parcela-predio-inexistente.json"` | 404 |
+| 4 | Código `p-01` repetido en predio 1 | `... -d "@http/parcela-codigo-duplicado.json"` | 409 |
+| 5 | Error inesperado | `curl.exe -i http://localhost:8080/api/diagnostico/error-simulado` | 500 con mensaje genérico |
+| extra | JSON con texto en superficie | `... -d "@http/parcela-json-invalido.json"` | 400 |
+
+`DiagnosticoController` existe solo para la prueba 5 del laboratorio y se debe borrar antes de producción.
+
+### Verificación en DataGrip
+```sql
+SELECT parcela_id, predio_id, codigo, nombre
+FROM agrocontrol.parcela
+ORDER BY parcela_id;
+```
+Aparece P-05 una sola vez. No aparece ninguna fila de las pruebas que fallaron (P-04, P-09, P-06).
+
+### Preguntas de defensa
+1. **¿Por qué un solo `GlobalExceptionHandler`?** Así todos los errores tienen el mismo formato y la regla "excepción → código HTTP" está en un solo lugar.
+2. **¿Por qué los controllers no tienen try/catch?** El controller solo recibe y responde. Si ocurre un error, la excepción sube y el handler la traduce.
+3. **¿Por qué el 500 no muestra el detalle?** El detalle puede revelar la estructura interna (tablas, clases, SQL). Se guarda en el log y el cliente solo recibe un mensaje genérico.
+4. **¿Por qué validar en el DTO, en el servicio y en PostgreSQL?** Cada capa revisa algo distinto: la forma del dato, las reglas del negocio y la integridad final. PostgreSQL protege incluso si alguien se salta la API.
+5. **¿Qué hace `@Transactional`?** Ejecuta todo el método como una sola operación: o se guarda todo o no se guarda nada.
+6. **¿Por qué `readOnly = true` en las consultas?** Indica que el método no modifica datos, y Hibernate puede optimizar la lectura.
 
 ## Capítulo 07 - Relación 1:N Predio → Parcela entre módulos
 

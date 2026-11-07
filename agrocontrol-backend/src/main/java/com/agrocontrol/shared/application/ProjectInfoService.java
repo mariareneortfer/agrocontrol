@@ -19,6 +19,6 @@ public class ProjectInfoService {
     }
 
     public String backendStage() {
-        return "RELACION_1N";
+        return "ERRORES_TRANSACCIONES";
     }
 }

@@ -6,6 +6,7 @@ import com.agrocontrol.farm.domain.port.in.ConsultarPredioUseCase;
 import com.agrocontrol.farm.domain.port.in.RegistrarPredioUseCase;
 import com.agrocontrol.farm.domain.port.out.PredioRepositoryPort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -24,7 +25,12 @@ public class PredioService implements RegistrarPredioUseCase, ConsultarPredioUse
         this.repositoryPort = repositoryPort;
     }
 
+    /**
+     * Limite transaccional: la verificacion del nombre y el INSERT ocurren en UNA transaccion.
+     * Si algo falla a mitad de camino, PostgreSQL deshace todo (rollback).
+     */
     @Override
+    @Transactional
     public Predio registrar(Predio predio) {
         // Regla previa: respeta uq_predio_nombre antes de llegar a la base.
         if (repositoryPort.existePorNombre(predio.getNombre())) {
@@ -34,11 +40,13 @@ public class PredioService implements RegistrarPredioUseCase, ConsultarPredioUse
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<Predio> buscarPorId(Long id) {
         return repositoryPort.buscarPorId(id);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<Predio> listar(String filtroNombre) {
         if (filtroNombre == null || filtroNombre.isBlank()) {
             return repositoryPort.listarTodos();

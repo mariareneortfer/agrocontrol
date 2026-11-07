@@ -41,12 +41,16 @@ public class Parcela {
         }
         this.id = id;
         this.predioId = predioId;
-        // Normalizacion: "p-01" y "P-01" son el mismo codigo.
-        this.codigo = codigo.trim().toUpperCase();
+        this.codigo = normalizarCodigo(codigo);
         this.nombre = nombre.trim();
         this.superficie = superficie;
         this.unidadSuperficie = unidadSuperficie.trim();
         this.ubicacionReferencial = ubicacionReferencial; // opcional
+    }
+
+    /** Regla del dominio: "p-01", " P-01 " y "P-01" son el mismo codigo. */
+    public static String normalizarCodigo(String codigo) {
+        return codigo == null ? null : codigo.trim().toUpperCase();
     }
 
     /** Crea una parcela nueva, todavia sin id (lo genera PostgreSQL). */

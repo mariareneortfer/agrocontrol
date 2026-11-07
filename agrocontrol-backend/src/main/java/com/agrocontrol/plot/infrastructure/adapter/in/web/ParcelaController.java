@@ -21,7 +21,8 @@ import java.util.Optional;
 
 /**
  * Adapter IN web de parcelas. /api/plots es la ruta que usa la API de la ficha del proyecto.
- * Depende solo de los Port IN del modulo plot.
+ * Depende solo de los Port IN del modulo plot. No tiene try/catch:
+ * los errores los traduce GlobalExceptionHandler.
  */
 @RestController
 @RequestMapping("/api/plots")
@@ -38,7 +39,7 @@ public class ParcelaController {
     /** POST /api/plots -> 201, 400 (validacion), 404 (predio no existe) o 409 (codigo repetido). */
     @PostMapping
     public ResponseEntity<ParcelaResponse> crear(@Valid @RequestBody CrearParcelaRequest request) {
-        Parcela registrada = registrar.registrar(ParcelaWebMapper.toDomain(request));
+        Parcela registrada = registrar.registrar(ParcelaWebMapper.toCommand(request));
         return ResponseEntity.status(HttpStatus.CREATED).body(ParcelaWebMapper.toResponse(registrada));
     }
 

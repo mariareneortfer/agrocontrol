@@ -24,6 +24,7 @@ import java.util.Optional;
  * Adapter IN web del modulo farm (Predio).
  * Depende de los Port IN (RegistrarPredioUseCase, ConsultarPredioUseCase),
  * nunca de JpaRepository ni de la clase concreta PredioService.
+ * No tiene try/catch: los errores los traduce GlobalExceptionHandler.
  */
 @RestController
 @RequestMapping("/api/farms")

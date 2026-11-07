@@ -1,17 +1,18 @@
 package com.agrocontrol.plot.infrastructure.adapter.in.web.mapper;
 
 import com.agrocontrol.plot.domain.model.Parcela;
+import com.agrocontrol.plot.domain.port.in.RegistrarParcelaCommand;
 import com.agrocontrol.plot.infrastructure.adapter.in.web.dto.CrearParcelaRequest;
 import com.agrocontrol.plot.infrastructure.adapter.in.web.dto.ParcelaResponse;
 
-/** Traduce entre los DTO de la API y el modelo de dominio de parcelas. */
+/** Traduce Request DTO -> Command y dominio -> Response DTO. */
 public final class ParcelaWebMapper {
 
     private ParcelaWebMapper() {
     }
 
-    public static Parcela toDomain(CrearParcelaRequest r) {
-        return Parcela.nueva(r.predioId(), r.codigo(), r.nombre(), r.superficie(),
+    public static RegistrarParcelaCommand toCommand(CrearParcelaRequest r) {
+        return new RegistrarParcelaCommand(r.predioId(), r.codigo(), r.nombre(), r.superficie(),
                 r.unidadSuperficie(), r.ubicacionReferencial());
     }
 

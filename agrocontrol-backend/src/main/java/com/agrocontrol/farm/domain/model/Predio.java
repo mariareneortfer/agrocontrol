@@ -1,9 +1,9 @@
-package com.agrocontrol.farm.domain;
+package com.agrocontrol.farm.domain.model;
 
 /**
- * Entidad padre del dominio: una propiedad agricola (tabla predio).
- * Es una clase de dominio, NO el contrato de la API: hacia afuera
- * se exponen CrearPredioRequest y PredioResponse.
+ * Modelo de DOMINIO de una propiedad agricola.
+ * No lleva @Entity, @Table ni @Column: no sabe nada de JPA ni de PostgreSQL.
+ * El mapeo a la tabla agrocontrol.predio esta en PredioJpaEntity.
  */
 public class Predio {
 

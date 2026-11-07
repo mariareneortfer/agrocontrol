@@ -1,5 +1,5 @@
 {
-  "nombre": "San Isidro",
-  "ubicacion": "Km 12 carretera al norte",
-  "descripcion": "Predio principal de la unidad productiva"
+  "nombre": "Santa Rosa",
+  "ubicacion": "Km 20 camino al valle",
+  "descripcion": "Predio creado desde la API (Capitulo 05)"
 }

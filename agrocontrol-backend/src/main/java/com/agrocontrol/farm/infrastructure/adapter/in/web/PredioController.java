@@ -1,7 +1,7 @@
 package com.agrocontrol.farm.infrastructure.adapter.in.web;
 
 import com.agrocontrol.farm.application.PredioService;
-import com.agrocontrol.farm.domain.Predio;
+import com.agrocontrol.farm.domain.model.Predio;
 import com.agrocontrol.farm.infrastructure.adapter.in.web.dto.CrearPredioRequest;
 import com.agrocontrol.farm.infrastructure.adapter.in.web.dto.PredioResponse;
 import jakarta.validation.Valid;

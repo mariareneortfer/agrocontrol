@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: agrocontrol-backend
+
+  # La contrasena NO se escribe aqui (este archivo se sube a GitHub).
+  # Se lee de config/db-local.yml, que esta excluido de Git.
+  config:
+    import: optional:file:./config/db-local.yml
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/agrocontrol
+    username: agrocontrol_admin
+    password: ${DB_PASSWORD:}
+
+  jpa:
+    hibernate:
+      # validate: Hibernate COMPRUEBA que las tablas y columnas existen; nunca las crea ni las modifica.
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: agrocontrol
+        format_sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: debug

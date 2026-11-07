@@ -1,0 +1,6 @@
+# Copia este archivo como db-local.yml (en esta misma carpeta)
+# y escribe la contrasena real del usuario agrocontrol_admin.
+# db-local.yml esta en .gitignore: no se sube a GitHub.
+spring:
+  datasource:
+    password: ESCRIBE_AQUI_LA_CONTRASENA

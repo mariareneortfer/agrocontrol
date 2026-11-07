@@ -1,47 +1,49 @@
 package com.agrocontrol.farm.application;
 
-import com.agrocontrol.farm.domain.Predio;
+import com.agrocontrol.farm.domain.model.Predio;
+import com.agrocontrol.farm.infrastructure.adapter.out.persistence.entity.PredioJpaEntity;
+import com.agrocontrol.farm.infrastructure.adapter.out.persistence.mapper.PredioPersistenceMapper;
+import com.agrocontrol.farm.infrastructure.adapter.out.persistence.repository.SpringDataPredioRepository;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Servicio temporal EN MEMORIA. Los predios se guardan en una lista
- * y se pierden al reiniciar la aplicacion. En el proximo capitulo
- * se reemplazara por PostgreSQL (tabla predio).
+ * Casos de uso de predios, ahora sobre PostgreSQL (tabla agrocontrol.predio).
+ * En este capitulo el servicio usa directamente el repositorio Spring Data.
+ * En el Capitulo 06 dependera de un puerto (interfaz) y no de Spring Data.
  */
 @Service
 public class PredioService {
 
-    private final List<Predio> predios = new ArrayList<>();
+    private final SpringDataPredioRepository repository;
 
-    // Genera ids 1, 2, 3... como lo hara la columna IDENTITY de predio_id.
-    private final AtomicLong secuencia = new AtomicLong(0);
+    public PredioService(SpringDataPredioRepository repository) {
+        this.repository = repository;
+    }
 
+    /** INSERT en agrocontrol.predio. PostgreSQL genera el predio_id. */
     public Predio registrar(String nombre, String ubicacion, String descripcion) {
-        Predio predio = new Predio(secuencia.incrementAndGet(), nombre, ubicacion, descripcion);
-        predios.add(predio);
-        return predio;
+        PredioJpaEntity guardado = repository.save(new PredioJpaEntity(nombre, ubicacion, descripcion));
+        return PredioPersistenceMapper.toDomain(guardado);
     }
 
     public List<Predio> listar() {
-        return List.copyOf(predios);
+        return repository.findAll(Sort.by("id")).stream()
+                .map(PredioPersistenceMapper::toDomain)
+                .toList();
     }
 
-    /** Filtro opcional: predios cuyo nombre contiene el texto, sin importar mayusculas. */
     public List<Predio> listarPorNombre(String texto) {
-        String buscado = texto.toLowerCase();
-        return predios.stream()
-                .filter(p -> p.getNombre().toLowerCase().contains(buscado))
+        return repository.findByNombreContainingIgnoreCaseOrderByIdAsc(texto).stream()
+                .map(PredioPersistenceMapper::toDomain)
                 .toList();
     }
 
     public Optional<Predio> buscarPorId(Long id) {
-        return predios.stream()
-                .filter(p -> p.getId().equals(id))
-                .findFirst();
+        return repository.findById(id)
+                .map(PredioPersistenceMapper::toDomain);
     }
 }

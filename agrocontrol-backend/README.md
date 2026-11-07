@@ -1,6 +1,6 @@
 # agrocontrol-backend
 
-Backend real de AgroControl con Spring Boot, Maven y Java 21. Todavía no usa JPA ni se conecta a PostgreSQL: los datos viven en memoria.
+Backend real de AgroControl con Spring Boot, Maven y Java 21. Desde el Capítulo 05 está conectado a PostgreSQL con JPA/Hibernate.
 
 | Dato | Respuesta |
 |---|---|
@@ -8,6 +8,115 @@ Backend real de AgroControl con Spring Boot, Maven y Java 21. Todavía no usa JP
 | Entidad padre 1:N | Predio (tabla `predio`), módulo `farm` |
 | Entidad dependiente N | Parcela (tabla `parcela`), módulo `plot` |
 | Relación | 1 predio tiene muchas parcelas (FK `parcela.predio_id`) |
+
+## Capítulo 05 - PostgreSQL + JPA/Hibernate
+
+Desde este capítulo los predios ya no viven en memoria: se guardan en la tabla `agrocontrol.predio` de PostgreSQL.
+
+### Ficha
+| Dato | Respuesta |
+|---|---|
+| Nombre del proyecto | AgroControl (`agrocontrol-backend`) |
+| Base de datos | `agrocontrol` |
+| Schema | `agrocontrol` |
+| Usuario de la base | `agrocontrol_admin` |
+| Tabla padre | `predio` |
+| PK de la tabla padre | `predio_id` (BIGINT, generado por PostgreSQL con IDENTITY) |
+| Tabla dependiente | `parcela` |
+| FK hacia la tabla padre | `parcela.predio_id` → `predio.predio_id` (`fk_parcela_predio`) |
+| UNIQUE importantes | `uq_predio_nombre` (nombre); `uq_parcela_predio_codigo` (predio_id, codigo) |
+
+Comprobación en DataGrip, con la conexión `AgroControl`:
+```sql
+SELECT current_database() AS base_actual,
+       current_schema()   AS schema_actual,
+       current_user       AS usuario_actual;
+-- agrocontrol | agrocontrol | agrocontrol_admin
+```
+
+### Columnas reales de `predio`
+Obtenidas de `information_schema.columns` antes de escribir la entidad JPA:
+
+| Columna | Tipo | NULL | Mapeo en `PredioJpaEntity` |
+|---|---|---|---|
+| `predio_id` | bigint | NO | `id`, `@Id` + `@GeneratedValue(IDENTITY)` |
+| `nombre` | character varying(100) | NO | `nombre`, `nullable = false`, `length = 100` |
+| `ubicacion` | character varying(200) | SÍ | `ubicacion`, `length = 200` |
+| `descripcion` | text | SÍ | `descripcion`, `columnDefinition = "text"` |
+| `created_at` | timestamp with time zone | NO | no se mapea: lo llena PostgreSQL con `DEFAULT CURRENT_TIMESTAMP` |
+| `updated_at` | timestamp with time zone | NO | no se mapea: lo llena PostgreSQL con `DEFAULT CURRENT_TIMESTAMP` |
+
+### Dependencias agregadas al `pom.xml`
+- `spring-boot-starter-data-jpa`: trae JPA, Hibernate y Spring Data JPA.
+- `org.postgresql:postgresql` (scope `runtime`): el driver JDBC que habla con PostgreSQL.
+
+### Configuración (`application.yml`)
+- `url: jdbc:postgresql://localhost:5432/agrocontrol` y `username: agrocontrol_admin`.
+- `ddl-auto: validate`: al arrancar, Hibernate **comprueba** que las tablas y columnas mapeadas existen en la base. Nunca crea ni modifica tablas: el esquema lo define la migración V1, y Java se adapta a ese contrato.
+- `hibernate.default_schema: agrocontrol`: las entidades no escriben el schema; lo toman de aquí.
+- `logging.level.org.hibernate.SQL: debug`: muestra en la consola el SQL que genera Hibernate.
+- **La contraseña no está en `application.yml`.** Se lee de `config/db-local.yml`, que está en `.gitignore` y no se sube a GitHub. El archivo `config/db-local.example.yml` muestra el formato.
+
+### Estructura nueva
+```text
+farm
+├── domain
+│   └── model
+│       └── Predio.java                      ← dominio, SIN anotaciones JPA
+├── application
+│   └── PredioService.java                   ← ahora usa el repositorio Spring Data
+└── infrastructure
+    └── adapter
+        ├── in/web                           ← PredioController y DTO (Capítulo 04)
+        └── out
+            └── persistence
+                ├── entity
+                │   └── PredioJpaEntity.java ← @Entity de la tabla predio
+                ├── mapper
+                │   └── PredioPersistenceMapper.java
+                └── repository
+                    └── SpringDataPredioRepository.java
+plot
+└── infrastructure/adapter/out/persistence/entity
+    └── ParcelaJpaEntity.java                ← @ManyToOne hacia PredioJpaEntity
+```
+
+### Por qué el dominio no tiene `@Entity`
+`Predio` representa el concepto del negocio y no debe depender de una tecnología. `PredioJpaEntity` representa la fila de la tabla. `PredioPersistenceMapper` traduce de una a otra. Si mañana cambia la forma de guardar, el dominio no se toca.
+
+### Relación 1:N
+La FK está en la tabla `parcela` (el lado N). Por eso `@ManyToOne` y `@JoinColumn(name = "predio_id")` están en `ParcelaJpaEntity`. No se agregó una colección `@OneToMany` en `PredioJpaEntity`, porque ningún caso de uso necesita todavía cargar todas las parcelas desde el predio.
+
+### JDBC, JPA, Hibernate y Spring Data JPA
+| Concepto | Significado |
+|---|---|
+| JDBC | La forma básica de Java de hablar con una base de datos: conexiones y SQL escrito a mano. |
+| JPA | La especificación estándar (las reglas y anotaciones `@Entity`, `@Column`) para mapear objetos a tablas. |
+| Hibernate | La implementación de JPA que usa Spring Boot: genera el SQL y usa JDBC por debajo. |
+| Spring Data JPA | Capa encima de JPA: basta con declarar la interfaz `SpringDataPredioRepository` y Spring crea la implementación. |
+| ORM | Mapeo objeto-relacional: traducir entre objetos Java y filas de tablas. |
+
+### Pruebas
+Con la aplicación encendida, desde PowerShell en la carpeta `agrocontrol-backend`:
+
+| Prueba | Resultado esperado |
+|---|---|
+| `GET /api/farms` | 200 con los predios que ya estaban en la base (San Isidro y La Esperanza, de la Clase 06) |
+| `POST /api/farms` con `http/predio-valido.json` (Santa Rosa) | 201; en la consola se ve el `insert into agrocontrol.predio` |
+| `POST /api/farms` con `http/predio-duplicado.json` (San Isidro) | 409: PostgreSQL lo rechaza por `uq_predio_nombre` |
+| `POST /api/farms` con `http/predio-sin-nombre.json` | 400: `@Valid` lo rechaza antes de llegar a la base (`nombre` es NOT NULL) |
+| `GET /api/farms/999` | 404 |
+
+Comprobación en DataGrip de que el dato quedó guardado:
+```sql
+SELECT *
+FROM agrocontrol.predio
+ORDER BY predio_id DESC;
+```
+
+Pruebas de configuración (se hacen y luego se deshacen):
+- **Schema incorrecto**: si en `application.yml` se cambia `default_schema: agrocontrol` por `default_schema: public`, la aplicación no arranca, porque Hibernate no encuentra la tabla `public.predio`.
+- **Columna incorrecta**: si en `PredioJpaEntity` se cambia `@Column(name = "nombre", ...)` por `@Column(name = "nombre_predio", ...)`, la aplicación no arranca, porque esa columna no existe.
 
 ## Capítulo 04 - API REST de Predio con DTO y validación
 
@@ -89,8 +198,8 @@ Si una validación falla, `@Valid` detiene la petición antes de llegar al servi
 - **400 Bad Request**: el JSON enviado no cumple las validaciones.
 - **404 Not Found**: no existe un predio con ese id.
 
-### Datos en memoria
-`PredioService` guarda los predios en una `List` y genera los ids con un `AtomicLong`. **Si se reinicia la aplicación, todos los predios se pierden** y los ids vuelven a empezar en 1. En el próximo capítulo la lista se reemplazará por la tabla `predio` de PostgreSQL.
+### Datos en memoria (solo en el Capítulo 04)
+En este capítulo `PredioService` guardaba los predios en una `List` y genera los ids con un `AtomicLong`. Al reiniciar la aplicación se perdían todos los predios. En el Capítulo 05 la lista se reemplazó por la tabla `predio` de PostgreSQL.
 
 ### Pruebas
 Las peticiones están en `requests.http`. Como el cliente HTTP de IntelliJ requiere licencia, las pruebas se ejecutan con `curl.exe` desde PowerShell, dentro de la carpeta `agrocontrol-backend`. Los cuerpos JSON están en la carpeta `http/`.

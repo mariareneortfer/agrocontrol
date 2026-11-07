@@ -2,33 +2,23 @@
 GET http://localhost:8080/api/health
 Accept: application/json
 
-### Crear predio valido -> 201
+### Crear predio valido -> 201 (se guarda en agrocontrol.predio)
 POST http://localhost:8080/api/farms
 Content-Type: application/json
 
-{
-  "nombre": "San Isidro",
-  "ubicacion": "Km 12 carretera al norte",
-  "descripcion": "Predio principal de la unidad productiva"
-}
+< ./http/predio-valido.json
 
-### Crear segundo predio valido -> 201
+### Crear predio con nombre repetido -> 409 (PostgreSQL: uq_predio_nombre)
 POST http://localhost:8080/api/farms
 Content-Type: application/json
 
-{
-  "nombre": "La Esperanza",
-  "ubicacion": "Comunidad Valle Alto"
-}
+< ./http/predio-duplicado.json
 
-### Crear predio sin nombre -> 400
+### Crear predio sin nombre -> 400 (validacion antes de llegar a la base)
 POST http://localhost:8080/api/farms
 Content-Type: application/json
 
-{
-  "nombre": "",
-  "ubicacion": "Km 5"
-}
+< ./http/predio-sin-nombre.json
 
 ### Crear predio con nombre de mas de 100 caracteres -> 400
 POST http://localhost:8080/api/farms
@@ -36,7 +26,7 @@ Content-Type: application/json
 
 < ./http/predio-nombre-largo.json
 
-### Listar -> 200
+### Listar -> 200 (lee agrocontrol.predio)
 GET http://localhost:8080/api/farms
 Accept: application/json
 

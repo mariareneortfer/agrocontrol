@@ -19,6 +19,6 @@ public class ProjectInfoService {
     }
 
     public String backendStage() {
-        return "SPRING_BOOT_BASE";
+        return "POSTGRESQL_JPA";
     }
 }

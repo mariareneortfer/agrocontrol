@@ -1,5 +1,5 @@
 {
-  "nombre": "Santa Rosa",
-  "ubicacion": "Km 20 camino al valle",
-  "descripcion": "Predio creado desde la API (Capitulo 05)"
+  "nombre": "El Porvenir",
+  "ubicacion": "Km 30 ruta al sur",
+  "descripcion": "Predio creado desde la API (Capitulo 06, arquitectura hexagonal)"
 }

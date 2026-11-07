@@ -6,14 +6,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 /**
- * Repositorio Spring Data: Spring genera la implementacion en tiempo de ejecucion.
- * JpaRepository ya trae save, findById, findAll, etc.
+ * Repositorio Spring Data: Spring genera la implementacion.
+ * SOLO lo conoce PredioPersistenceAdapter; ni el controller ni el caso de uso lo ven.
  */
 public interface SpringDataPredioRepository extends JpaRepository<PredioJpaEntity, Long> {
 
-    /**
-     * Metodo derivado: Spring arma el SQL a partir del nombre del metodo.
-     * Lo justifica el filtro opcional GET /api/farms?nombre=...
-     */
+    /** Para la regla UNIQUE de predio.nombre. */
+    boolean existsByNombre(String nombre);
+
+    /** Para el filtro opcional GET /api/farms?nombre=... */
     List<PredioJpaEntity> findByNombreContainingIgnoreCaseOrderByIdAsc(String nombre);
 }

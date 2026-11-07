@@ -40,8 +40,9 @@ public class PredioJpaEntity {
     protected PredioJpaEntity() {
     }
 
-    /** Para crear un predio nuevo: sin id, porque lo genera la base. */
-    public PredioJpaEntity(String nombre, String ubicacion, String descripcion) {
+    /** id null = fila nueva (INSERT); id con valor = fila existente. */
+    public PredioJpaEntity(Long id, String nombre, String ubicacion, String descripcion) {
+        this.id = id;
         this.nombre = nombre;
         this.ubicacion = ubicacion;
         this.descripcion = descripcion;

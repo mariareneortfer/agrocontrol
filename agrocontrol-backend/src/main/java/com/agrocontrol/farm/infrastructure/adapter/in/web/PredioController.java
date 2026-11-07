@@ -1,9 +1,11 @@
 package com.agrocontrol.farm.infrastructure.adapter.in.web;
 
-import com.agrocontrol.farm.application.PredioService;
 import com.agrocontrol.farm.domain.model.Predio;
+import com.agrocontrol.farm.domain.port.in.ConsultarPredioUseCase;
+import com.agrocontrol.farm.domain.port.in.RegistrarPredioUseCase;
 import com.agrocontrol.farm.infrastructure.adapter.in.web.dto.CrearPredioRequest;
 import com.agrocontrol.farm.infrastructure.adapter.in.web.dto.PredioResponse;
+import com.agrocontrol.farm.infrastructure.adapter.in.web.mapper.PredioWebMapper;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,54 +21,44 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Adaptador de entrada web del modulo farm (Predio).
- * Recibe HTTP, delega en PredioService y responde con DTOs.
- * Se usa /api/farms para seguir el estilo de la API de la ficha (/plots, /campaigns).
+ * Adapter IN web del modulo farm (Predio).
+ * Depende de los Port IN (RegistrarPredioUseCase, ConsultarPredioUseCase),
+ * nunca de JpaRepository ni de la clase concreta PredioService.
  */
 @RestController
 @RequestMapping("/api/farms")
 public class PredioController {
 
-    private final PredioService service;
+    private final RegistrarPredioUseCase registrar;
+    private final ConsultarPredioUseCase consultar;
 
-    public PredioController(PredioService service) {
-        this.service = service;
+    public PredioController(RegistrarPredioUseCase registrar, ConsultarPredioUseCase consultar) {
+        this.registrar = registrar;
+        this.consultar = consultar;
     }
 
-    /** POST /api/farms -> 201 Created, o 400 si el JSON no es valido. */
+    /** POST /api/farms -> 201, 400 (validacion) o 409 (nombre repetido). */
     @PostMapping
     public ResponseEntity<PredioResponse> crear(@Valid @RequestBody CrearPredioRequest request) {
-        Predio predio = service.registrar(request.nombre(), request.ubicacion(), request.descripcion());
-        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(predio));
+        Predio registrado = registrar.registrar(PredioWebMapper.toDomain(request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(PredioWebMapper.toResponse(registrado));
     }
 
-    /** GET /api/farms o /api/farms?nombre=isidro -> 200 con la lista. */
+    /** GET /api/farms o /api/farms?nombre=isidro -> 200. */
     @GetMapping
     public List<PredioResponse> listar(@RequestParam(required = false) String nombre) {
-        List<Predio> predios = (nombre == null || nombre.isBlank())
-                ? service.listar()
-                : service.listarPorNombre(nombre);
-        return predios.stream()
-                .map(PredioController::toResponse)
+        return consultar.listar(nombre).stream()
+                .map(PredioWebMapper::toResponse)
                 .toList();
     }
 
-    /** GET /api/farms/{id} -> 200 si existe, 404 si no existe. */
+    /** GET /api/farms/{id} -> 200 o 404. */
     @GetMapping("/{id}")
-    public ResponseEntity<PredioResponse> buscarPorId(@PathVariable Long id) {
-        Optional<Predio> predio = service.buscarPorId(id);
+    public ResponseEntity<PredioResponse> buscar(@PathVariable Long id) {
+        Optional<Predio> predio = consultar.buscarPorId(id);
         if (predio.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.ok(toResponse(predio.get()));
-    }
-
-    /** Convierte la clase de dominio en el DTO de salida. */
-    private static PredioResponse toResponse(Predio predio) {
-        return new PredioResponse(
-                predio.getId(),
-                predio.getNombre(),
-                predio.getUbicacion(),
-                predio.getDescripcion());
+        return ResponseEntity.ok(PredioWebMapper.toResponse(predio.get()));
     }
 }

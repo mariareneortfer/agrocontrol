@@ -19,6 +19,6 @@ public class ProjectInfoService {
     }
 
     public String backendStage() {
-        return "POSTGRESQL_JPA";
+        return "HEXAGONAL";
     }
 }

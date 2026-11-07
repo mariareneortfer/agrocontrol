@@ -1,6 +1,6 @@
 # agrocontrol-backend
 
-Backend real de AgroControl con Spring Boot, Maven y Java 21. Desde el Capítulo 05 está conectado a PostgreSQL con JPA/Hibernate.
+Backend real de AgroControl con Spring Boot, Maven y Java 21. Desde el Capítulo 05 está conectado a PostgreSQL con JPA/Hibernate, y desde el Capítulo 06 el módulo `farm` sigue la arquitectura hexagonal.
 
 | Dato | Respuesta |
 |---|---|
@@ -8,6 +8,119 @@ Backend real de AgroControl con Spring Boot, Maven y Java 21. Desde el Capítulo
 | Entidad padre 1:N | Predio (tabla `predio`), módulo `farm` |
 | Entidad dependiente N | Parcela (tabla `parcela`), módulo `plot` |
 | Relación | 1 predio tiene muchas parcelas (FK `parcela.predio_id`) |
+
+## Capítulo 06 - Arquitectura hexagonal en el módulo Predio
+
+El módulo `farm` (Predio) se reorganizó para que **el caso de uso no conozca JPA ni PostgreSQL**. La funcionalidad es la misma del Capítulo 05; cambió quién depende de quién.
+
+### Equivalencia con el proyecto del profesor
+| Elemento del profesor | AgroControl |
+|---|---|
+| Proyecto | `agrocontrol-backend` |
+| Package base | `com.agrocontrol` |
+| Entidad padre | Predio (módulo `farm`) |
+| Tabla PostgreSQL | `predio` |
+| PK | `predio_id` |
+| Campo UNIQUE 1 | `nombre` (`uq_predio_nombre`) |
+| Campo UNIQUE 2 | No existe en `predio`. No se inventa: la otra unicidad del diseño, `(predio_id, codigo)`, es de la tabla `parcela` y se trabajará en el Capítulo 07. |
+| Schema | `agrocontrol` |
+
+Tampoco se agregó un atributo `activo`: la tabla `predio` no tiene esa columna.
+
+### Árbol del módulo
+```text
+farm
+├── domain                                   ← NÚCLEO: sin Spring Data, sin JPA
+│   ├── model
+│   │   └── Predio.java
+│   ├── exception
+│   │   └── PredioDuplicadoException.java
+│   └── port
+│       ├── in                               ← qué puede hacer el sistema
+│       │   ├── RegistrarPredioUseCase.java
+│       │   └── ConsultarPredioUseCase.java
+│       └── out                              ← qué necesita el núcleo del exterior
+│           └── PredioRepositoryPort.java
+├── application
+│   └── service
+│       └── PredioService.java               ← implementa los Port IN, usa el Port OUT
+└── infrastructure
+    └── adapter
+        ├── in
+        │   └── web                          ← ADAPTER IN
+        │       ├── PredioController.java
+        │       ├── PredioExceptionHandler.java
+        │       ├── dto
+        │       │   ├── CrearPredioRequest.java
+        │       │   └── PredioResponse.java
+        │       └── mapper
+        │           └── PredioWebMapper.java
+        └── out
+            └── persistence                  ← ADAPTER OUT
+                ├── PredioPersistenceAdapter.java
+                ├── entity
+                │   └── PredioJpaEntity.java
+                ├── mapper
+                │   └── PredioPersistenceMapper.java
+                └── repository
+                    └── SpringDataPredioRepository.java
+```
+
+### Recorrido de una petición
+```text
+POST /api/farms
+   ↓
+PredioController                (adapter in: HTTP + DTO)
+   ↓ PredioWebMapper: request → Predio
+RegistrarPredioUseCase          (port in)
+   ↓
+PredioService                   (caso de uso: ¿ya existe ese nombre?)
+   ↓
+PredioRepositoryPort            (port out)
+   ↓
+PredioPersistenceAdapter        (adapter out)
+   ↓ PredioPersistenceMapper: Predio → PredioJpaEntity
+SpringDataPredioRepository → Hibernate → INSERT INTO agrocontrol.predio
+```
+
+### Checklist de arquitectura
+- [x] `PredioController` no inyecta `JpaRepository`: recibe `RegistrarPredioUseCase` y `ConsultarPredioUseCase`.
+- [x] `PredioService` depende de `PredioRepositoryPort`, una interfaz del dominio.
+- [x] `PredioRepositoryPort` no extiende `JpaRepository`.
+- [x] `Predio` no tiene `@Entity`.
+- [x] `PredioJpaEntity` está dentro de `infrastructure`.
+- [x] Hay mapper web (`PredioWebMapper`) y mapper de persistencia (`PredioPersistenceMapper`).
+- [x] Ningún archivo de `domain` o `application` importa `jakarta.persistence` ni `org.springframework.data`.
+
+### Pruebas
+Desde PowerShell, en la carpeta `agrocontrol-backend`, con la aplicación encendida:
+
+| Prueba | Resultado esperado |
+|---|---|
+| `POST /api/farms` con `http/predio-valido.json` (El Porvenir) | 201 y fila nueva en `agrocontrol.predio` |
+| `GET /api/farms/1` | 200 (San Isidro) |
+| `GET /api/farms/999` | 404 |
+| `POST /api/farms` con `http/predio-sin-nombre.json` | 400 (validación HTTP) |
+| `POST /api/farms` con `http/predio-duplicado.json` (San Isidro) | 409, mensaje "Ya existe un predio con el nombre: San Isidro". Lo detecta el caso de uso con `existePorNombre`, antes de llegar a PostgreSQL. |
+
+Verificación en DataGrip:
+```sql
+SELECT *
+FROM agrocontrol.predio
+ORDER BY predio_id;
+```
+
+### Respuestas para la defensa
+| Pregunta | Respuesta |
+|---|---|
+| ¿Cuál es tu Port IN y qué capacidad expresa? | `RegistrarPredioUseCase` (registrar un predio) y `ConsultarPredioUseCase` (buscar por id y listar). |
+| ¿Cuál es tu Port OUT y por qué está en el núcleo? | `PredioRepositoryPort`. Está en `domain` porque es el núcleo quien define lo que necesita; la infraestructura se adapta a él. Esa es la inversión de dependencias. |
+| ¿Qué clase implementa el Port OUT? | `PredioPersistenceAdapter`. |
+| ¿Qué clase conoce `JpaRepository`? | Solo `PredioPersistenceAdapter`, a través de `SpringDataPredioRepository`. |
+| ¿Qué clase conoce el nombre físico de la tabla? | `PredioJpaEntity`, con `@Table(name = "predio")`. El schema está en `application.yml`. |
+| ¿Por qué tu dominio no tiene `@Entity`? | Porque representa el negocio y no debe depender de una tecnología de base de datos. |
+| Si cambiáramos PostgreSQL por otra tecnología, ¿qué cambiaría? | Solo la infraestructura de salida: `PredioPersistenceAdapter`, la entidad, el repositorio y el mapper de persistencia. El dominio, los puertos, el caso de uso y el controller no cambian. |
+| ¿Qué constraint respetas desde el caso de uso? | `uq_predio_nombre`: `PredioService.registrar` consulta `existePorNombre` y lanza `PredioDuplicadoException` (409) antes de intentar guardar. |
 
 ## Capítulo 05 - PostgreSQL + JPA/Hibernate
 

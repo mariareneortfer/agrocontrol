@@ -5,6 +5,7 @@ Primera implementación física del esquema en PostgreSQL.
 ## 1. Base de datos creada
 - Nombre: `agrocontrol`
 - Propietario: rol `agrocontrol_admin`
+- Esquema del proyecto: `agrocontrol` (las tablas no están en `public`)
 - Codificación: UTF8
 - Servidor: PostgreSQL 17 local, puerto 5432.
 - Herramienta: DataGrip.
@@ -41,6 +42,47 @@ SELECT current_user AS usuario_actual,
 ```
 
 La contraseña real no se guarda en el repositorio. `SUPERUSER` se usa sólo en este laboratorio local; el backend de la aplicación deberá usar un rol con privilegios mínimos.
+
+## 1.1 Base de datos y esquema
+
+Jerarquía, siguiendo la guía "Base de Datos vs. Esquema en PostgreSQL":
+
+```text
+Servidor PostgreSQL (localhost:5432)
+└── agrocontrol              ← BASE DE DATOS
+    ├── public               ← ESQUEMA por defecto (queda vacío)
+    └── agrocontrol          ← ESQUEMA del proyecto
+        ├── predio           ← TABLA
+        ├── parcela
+        ├── cultivo
+        ├── campana
+        ├── campana_parcela
+        └── labor
+```
+
+- La base `agrocontrol` es el contenedor del sistema; la conexión de DataGrip apunta a ella.
+- El esquema `agrocontrol` agrupa las tablas del proyecto. El nombre completo de una tabla es, por ejemplo, `agrocontrol.parcela`.
+- La base y el esquema se llaman igual, pero son objetos distintos: la base se crea con `CREATE DATABASE` y el esquema con `CREATE SCHEMA`.
+- `V1__init_core.sql` empieza con `CREATE SCHEMA IF NOT EXISTS agrocontrol;` y `SET search_path TO agrocontrol, public;`. Así, las tablas sin esquema escrito se crean dentro de `agrocontrol`.
+- Para no tener que escribir el esquema en cada consulta, se configuró el `search_path` del rol en esta base:
+
+```sql
+ALTER ROLE agrocontrol_admin IN DATABASE agrocontrol
+    SET search_path TO agrocontrol, public;
+```
+
+Nota: en la primera ejecución las tablas se habían creado en `public`. Se movieron al esquema `agrocontrol` con `ALTER TABLE ... SET SCHEMA agrocontrol`, sin perder datos ni restricciones, y el script V1 se corrigió para crearlas directamente allí.
+
+Comprobación:
+
+```sql
+SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_schema = 'agrocontrol'
+  AND table_type = 'BASE TABLE'
+ORDER BY table_name;
+-- Resultado: 6 tablas, todas con table_schema = agrocontrol
+```
 
 ## 2. Tablas incluidas en V1 y por qué
 
@@ -155,7 +197,7 @@ DROP DATABASE agrocontrol;
 CREATE DATABASE agrocontrol WITH OWNER = postgres ENCODING = 'UTF8';
 ```
 
-Luego se ejecuta `V1__init_core.sql` conectados a `agrocontrol`.
+Luego se ejecuta `V1__init_core.sql` conectados a `agrocontrol`; el propio script crea el esquema `agrocontrol`.
 
 ## 9. Tablas que no se crearon todavía y por qué
 - rol, usuario y asignacion_labor: entran en V2, cuando se trabaje la asignación de operarios.

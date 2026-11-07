@@ -12,7 +12,15 @@
 --
 -- Fuente del diseno: docs/04-model/modelo-fisico-v0.1.md
 -- Este script debe ejecutarse sobre una base de datos vacia.
+--
+-- Todas las tablas se crean dentro del esquema del proyecto, agrocontrol,
+-- y no en el esquema public.
 -- =====================================================================
+
+
+-- 0. Esquema del proyecto.
+CREATE SCHEMA IF NOT EXISTS agrocontrol;
+SET search_path TO agrocontrol, public;
 
 
 -- 1. predio: una fila representa una propiedad agricola.

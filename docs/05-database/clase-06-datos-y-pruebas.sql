@@ -10,6 +10,9 @@
 --   - Parte C: ejecutar cada consulta y observar el resultado.
 -- =====================================================================
 
+-- Las tablas estan en el esquema agrocontrol.
+SET search_path TO agrocontrol, public;
+
 
 -- ---------------------------------------------------------------------
 -- PARTE A - Dataset minimo valido (todo esto debe funcionar)
@@ -127,14 +130,14 @@ WHERE c.nombre = 'Maiz verano 2026';
 -- PARTE C - Inspeccion de la estructura
 -- ---------------------------------------------------------------------
 
-SELECT table_name
+SELECT table_schema, table_name
 FROM information_schema.tables
-WHERE table_schema = 'public'
+WHERE table_schema = 'agrocontrol'
 ORDER BY table_name;
 
 SELECT table_name, column_name, data_type, is_nullable
 FROM information_schema.columns
-WHERE table_schema = 'public'
+WHERE table_schema = 'agrocontrol'
 ORDER BY table_name, ordinal_position;
 
 -- Lista de constraints por tabla (p = PK, f = FK, u = UNIQUE, c = CHECK).
@@ -142,5 +145,5 @@ SELECT rel.relname AS tabla, con.conname AS restriccion, con.contype AS tipo
 FROM pg_constraint con
 JOIN pg_class rel ON rel.oid = con.conrelid
 JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-WHERE nsp.nspname = 'public'
+WHERE nsp.nspname = 'agrocontrol'
 ORDER BY rel.relname, con.contype, con.conname;

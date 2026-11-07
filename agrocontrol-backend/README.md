@@ -1,93 +1,118 @@
-# agrocontrol-backend — Capítulo 03
+# agrocontrol-backend
 
-Primer backend real de AgroControl con Spring Boot, Maven y Java 21. Todavía no usa JPA ni se conecta a PostgreSQL.
+Backend real de AgroControl con Spring Boot, Maven y Java 21. Todavía no usa JPA ni se conecta a PostgreSQL: los datos viven en memoria.
 
-## Ficha del capítulo
 | Dato | Respuesta |
 |---|---|
-| Nombre del sistema | AgroControl |
-| Nombre del backend | `agrocontrol-backend` |
 | Package base | `com.agrocontrol` |
-| Entidad padre 1:N | Predio (tabla `predio`) |
-| Entidad dependiente N | Parcela (tabla `parcela`) |
+| Entidad padre 1:N | Predio (tabla `predio`), módulo `farm` |
+| Entidad dependiente N | Parcela (tabla `parcela`), módulo `plot` |
 | Relación | 1 predio tiene muchas parcelas (FK `parcela.predio_id`) |
 
-## Cómo se creó
-IntelliJ IDEA → New Project → Spring Boot, con Maven, Java 21, Jar, Group `com.agrocontrol`, Artifact `agrocontrol-backend`, Package name `com.agrocontrol`. Dependencias: solo **Spring Web** y **Validation**. No se agregó Spring Data JPA ni el driver de PostgreSQL.
+## Capítulo 04 - API REST de Predio con DTO y validación
 
-## Estructura de packages
+### Por qué Predio es la entidad padre
+Es la raíz del modelo: sin predio no hay parcelas, y la FK `parcela.predio_id` apunta a él. Además es la tabla con la que empieza la migración V1.
+
+### URL base
+`/api/farms`. Se usa el plural en inglés para seguir el estilo de la API de la ficha del proyecto: `/plots`, `/campaigns`, `/tasks`. `farm` es también el nombre del módulo.
+
+### Estructura
 ```text
 com.agrocontrol
 ├── AgrocontrolBackendApplication.java
 ├── shared
 │   ├── application
-│   │   └── ProjectInfoService.java      ← primer Bean (@Service)
+│   │   └── ProjectInfoService.java
 │   └── web
-│       └── HealthController.java        ← GET /api/health
-├── farm                                 ← módulo de Predio (entidad padre)
+│       ├── HealthController.java              ← GET /api/health
+│       └── ValidacionExceptionHandler.java    ← arma la respuesta 400
+├── farm                                       ← módulo Predio
 │   ├── domain
+│   │   └── Predio.java
 │   ├── application
-│   │   ├── PredioDemoResponse.java      ← record de salida
-│   │   └── PredioDemoService.java       ← Bean temporal
+│   │   └── PredioService.java                 ← lista en memoria + AtomicLong
 │   └── infrastructure
-│       └── web
-│           └── PredioDemoController.java ← GET /api/farms/demo
-└── plot                                 ← módulo de Parcela (entidad dependiente)
-    ├── domain
-    ├── application
-    └── infrastructure
-        └── web
+│       └── adapter
+│           └── in
+│               └── web                        ← adaptador de entrada
+│                   ├── PredioController.java
+│                   └── dto
+│                       ├── CrearPredioRequest.java
+│                       └── PredioResponse.java
+└── plot                                       ← módulo Parcela (siguientes capítulos)
 ```
 
-El código se organiza por módulo de negocio (`farm`, `plot`) y no con packages globales `controller`, `service` y `repository`. Las carpetas vacías tienen un `package-info.java` para que Git las conserve.
+El endpoint demo del Capítulo 03 (`/api/farms/demo`) se retiró: lo reemplaza la API real de predios.
 
-Se usa `/api/farms` (en inglés) para seguir el estilo de la API de la ficha: `/plots`, `/campaigns`, `/tasks`.
+### Contrato HTTP
+| Verbo | Ruta | Entrada | Salida | Status |
+|---|---|---|---|---|
+| POST | `/api/farms` | JSON `CrearPredioRequest` | `PredioResponse` | 201 / 400 |
+| GET | `/api/farms` | Query param opcional `nombre` | Lista de `PredioResponse` | 200 |
+| GET | `/api/farms/{id}` | Path variable `id` | `PredioResponse` | 200 / 404 |
 
-## Endpoints
-| Método y URL | Respuesta |
-|---|---|
-| `GET /api/health` | `{"status":"OK","application":"agrocontrol-backend","project":"AgroControl","stage":"SPRING_BOOT_BASE","timestamp":"..."}` |
-| `GET /api/farms/demo` | `{"id":1,"nombre":"San Isidro","ubicacion":"Km 12 carretera al norte","cantidadParcelas":2}` |
+### Request y Response
+- `CrearPredioRequest`: `nombre`, `ubicacion`, `descripcion`. Es lo que el cliente envía. **No lleva `id`**, porque lo genera el sistema.
+- `PredioResponse`: `id`, `nombre`, `ubicacion`, `descripcion`. Es lo que la API devuelve. El `id` **sale pero no entra**.
+- La clase de dominio `Predio` nunca se expone directamente: si mañana cambia por dentro (por ejemplo, al conectar JPA), el contrato de la API no cambia.
 
-Las dos peticiones están escritas en `requests.http`. En la versión gratuita de IntelliJ el cliente HTTP necesita licencia, así que las pruebas se hicieron abriendo las mismas URL en el navegador, con la aplicación encendida:
+### Validaciones
+| Campo | Validación | Regla que protege |
+|---|---|---|
+| `nombre` | `@NotBlank` | `predio.nombre NOT NULL`: un predio sin nombre no es válido. |
+| `nombre` | `@Size(max = 100)` | `predio.nombre VARCHAR(100)`: PostgreSQL rechazaría un nombre más largo. |
+| `ubicacion` | `@Size(max = 200)` | `predio.ubicacion VARCHAR(200)`. Es opcional. |
+| `descripcion` | `@Size(max = 1000)` | Es `TEXT` en la base; se pone un límite razonable para la API. Es opcional. |
 
-- `http://localhost:8080/api/health` → HTTP 200 con `"status":"OK"`.
-- `http://localhost:8080/api/farms/demo` → HTTP 200 con el predio San Isidro.
+Si una validación falla, `@Valid` detiene la petición antes de llegar al servicio y `ValidacionExceptionHandler` responde 400 con el campo y el mensaje:
 
-Las capturas de la consola (`Started AgrocontrolBackendApplication`, Tomcat en el puerto 8080) y de las dos respuestas son la evidencia del capítulo.
-
-## Flujo de una petición
-```text
-Cliente HTTP (requests.http)
-   ↓
-GET /api/farms/demo
-   ↓
-Spring MVC busca el controller cuyo @RequestMapping + @GetMapping coincide
-   ↓
-PredioDemoController.demo()
-   ↓
-PredioDemoService.obtenerDemo()   (Bean creado e inyectado por Spring)
-   ↓
-PredioDemoResponse (record)
-   ↓
-Spring lo convierte a JSON → HTTP 200
+```json
+{"status":400,"error":"Bad Request","errores":{"nombre":"El nombre del predio es obligatorio"},"timestamp":"..."}
 ```
 
-## Conceptos
-| Concepto | Explicación |
+### Anotaciones
+| Anotación | Qué hace |
 |---|---|
-| Spring Boot | Framework que arma la aplicación con configuración automática y la ejecuta con un servidor web incluido (puerto 8080), sin instalar un servidor aparte. |
-| Bean | Objeto que crea y administra Spring. En este proyecto: `ProjectInfoService`, `PredioDemoService` y los controllers. |
-| IoC (inversión de control) | Nosotros no creamos los objetos con `new`; Spring los crea y decide cuándo. El control pasa al framework. |
-| DI (inyección de dependencias) | Spring entrega a cada clase los Beans que necesita. `HealthController` recibe `ProjectInfoService` ya creado. |
-| `@RestController` | Marca una clase que atiende peticiones HTTP y devuelve datos (JSON), no páginas. |
-| `@Service` | Marca una clase de lógica de aplicación para que Spring la convierta en Bean. |
-| Inyección por constructor | El Bean llega como parámetro del constructor y se guarda en un atributo `final`. La dependencia queda explícita y no puede faltar. |
-| `@GetMapping` | Indica qué método responde a una petición GET en una ruta. |
-| `@SpringBootApplication` | Marca la clase principal: activa la configuración automática y busca Beans en `com.agrocontrol` y sus subpackages. |
+| `@RestController` | La clase atiende peticiones HTTP y sus métodos devuelven datos que Spring convierte a JSON. |
+| `@RequestMapping("/api/farms")` | Fija la ruta base que comparten todos los métodos del controller. |
+| `@PostMapping` | El método responde a peticiones POST, que crean un recurso. |
+| `@GetMapping` | El método responde a peticiones GET, que consultan sin modificar. |
+| `@RequestBody` | Toma el JSON del cuerpo de la petición y lo convierte en el record `CrearPredioRequest`. |
+| `@Valid` | Revisa las validaciones del DTO (`@NotBlank`, `@Size`) antes de ejecutar el método. |
+| `@PathVariable` | Toma un valor que es parte de la ruta: el `1` de `/api/farms/1`. Identifica un recurso concreto. |
+| `@RequestParam` | Toma un valor opcional después del `?`: el `isidro` de `/api/farms?nombre=isidro`. Sirve para filtrar. |
 
-## Por qué todavía no usamos PostgreSQL
-Primero hay que entender cómo Spring crea los Beans y atiende peticiones HTTP. La base `agrocontrol` ya existe; la conexión llegará con Spring Data JPA en un capítulo posterior. El script de la base está guardado en `src/main/resources/db/migration/V1__init_core.sql`, la carpeta que usará Flyway.
+### Códigos de respuesta
+- **201 Created**: el POST creó un predio nuevo. Es más preciso que 200, que solo dice "salió bien".
+- **200 OK**: la consulta encontró lo pedido.
+- **400 Bad Request**: el JSON enviado no cumple las validaciones.
+- **404 Not Found**: no existe un predio con ese id.
 
-## Cómo evolucionará hacia hexagonal
-`PredioDemoService` se reemplazará por casos de uso en `farm/application`, que dependerán de puertos (interfaces) en `farm/domain`, como `PredioRepository` del laboratorio. La implementación con PostgreSQL irá en `farm/infrastructure/persistence`. El controller seguirá en `farm/infrastructure/web`.
+### Datos en memoria
+`PredioService` guarda los predios en una `List` y genera los ids con un `AtomicLong`. **Si se reinicia la aplicación, todos los predios se pierden** y los ids vuelven a empezar en 1. En el próximo capítulo la lista se reemplazará por la tabla `predio` de PostgreSQL.
+
+### Pruebas
+Las peticiones están en `requests.http`. Como el cliente HTTP de IntelliJ requiere licencia, las pruebas se ejecutan con `curl.exe` desde PowerShell, dentro de la carpeta `agrocontrol-backend`. Los cuerpos JSON están en la carpeta `http/`.
+
+| Prueba | Comando | Resultado esperado |
+|---|---|---|
+| POST válido | `curl.exe -i -X POST http://localhost:8080/api/farms -H "Content-Type: application/json" -d "@http/predio-valido.json"` | 201 + JSON con `id` 1 |
+| POST válido 2 | igual, con `@http/predio-valido-2.json` | 201 + JSON con `id` 2 |
+| POST sin nombre | igual, con `@http/predio-sin-nombre.json` | 400, error en `nombre` |
+| POST nombre de más de 100 caracteres | igual, con `@http/predio-nombre-largo.json` | 400, error en `nombre` |
+| GET lista | `curl.exe -i http://localhost:8080/api/farms` | 200 + arreglo con 2 predios |
+| GET con filtro | `curl.exe -i "http://localhost:8080/api/farms?nombre=isidro"` | 200 + solo San Isidro |
+| GET por id existente | `curl.exe -i http://localhost:8080/api/farms/1` | 200 + San Isidro |
+| GET por id inexistente | `curl.exe -i http://localhost:8080/api/farms/999` | 404 |
+
+Las capturas de PowerShell con estas respuestas son la evidencia del capítulo.
+
+### Adaptador de entrada
+`PredioController` y sus DTO están en `farm/infrastructure/adapter/in/web`. Es el **adaptador de entrada**: traduce HTTP y JSON al lenguaje del servicio. El controller no tiene lógica de negocio: valida la forma de los datos, delega en `PredioService` y convierte el resultado en `PredioResponse`.
+
+## Capítulo 03 - Spring Boot base (resumen)
+- Proyecto creado con Spring Initializr desde IntelliJ: Maven, Java 21, Jar, dependencias Spring Web y Validation, sin JPA ni driver de PostgreSQL.
+- `GET /api/health` responde el estado de la aplicación usando el Bean `ProjectInfoService`, inyectado por constructor.
+- Spring crea los Beans (`@Service`, `@RestController`) e inyecta las dependencias: inversión de control e inyección de dependencias.
+- El script de la base de datos está en `src/main/resources/db/migration/V1__init_core.sql`, donde lo buscará Flyway más adelante.

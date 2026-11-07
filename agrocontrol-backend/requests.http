@@ -2,6 +2,52 @@
 GET http://localhost:8080/api/health
 Accept: application/json
 
-### Demo entidad padre (Predio)
-GET http://localhost:8080/api/farms/demo
+### Crear predio valido -> 201
+POST http://localhost:8080/api/farms
+Content-Type: application/json
+
+{
+  "nombre": "San Isidro",
+  "ubicacion": "Km 12 carretera al norte",
+  "descripcion": "Predio principal de la unidad productiva"
+}
+
+### Crear segundo predio valido -> 201
+POST http://localhost:8080/api/farms
+Content-Type: application/json
+
+{
+  "nombre": "La Esperanza",
+  "ubicacion": "Comunidad Valle Alto"
+}
+
+### Crear predio sin nombre -> 400
+POST http://localhost:8080/api/farms
+Content-Type: application/json
+
+{
+  "nombre": "",
+  "ubicacion": "Km 5"
+}
+
+### Crear predio con nombre de mas de 100 caracteres -> 400
+POST http://localhost:8080/api/farms
+Content-Type: application/json
+
+< ./http/predio-nombre-largo.json
+
+### Listar -> 200
+GET http://localhost:8080/api/farms
+Accept: application/json
+
+### Listar con filtro opcional -> 200
+GET http://localhost:8080/api/farms?nombre=isidro
+Accept: application/json
+
+### Buscar por id existente -> 200
+GET http://localhost:8080/api/farms/1
+Accept: application/json
+
+### Buscar por id inexistente -> 404
+GET http://localhost:8080/api/farms/999
 Accept: application/json

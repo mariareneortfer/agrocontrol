@@ -19,6 +19,6 @@ public class ProjectInfoService {
     }
 
     public String backendStage() {
-        return "HEXAGONAL";
+        return "RELACION_1N";
     }
 }

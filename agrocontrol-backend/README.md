@@ -9,6 +9,138 @@ Backend real de AgroControl con Spring Boot, Maven y Java 21. Desde el Capítulo
 | Entidad dependiente N | Parcela (tabla `parcela`), módulo `plot` |
 | Relación | 1 predio tiene muchas parcelas (FK `parcela.predio_id`) |
 
+## Capítulo 07 - Relación 1:N Predio → Parcela entre módulos
+
+El módulo `plot` (Parcela) ahora tiene la misma arquitectura hexagonal que `farm` y se relaciona con él respetando la FK real de PostgreSQL.
+
+### Datos de la relación
+| Dato | Profesor | AgroControl |
+|---|---|---|
+| Entidad padre | Cliente | Predio (módulo `farm`) |
+| PK padre | `cliente_id` | `predio_id` |
+| Entidad dependiente | Vehiculo | Parcela (módulo `plot`) |
+| PK dependiente | `vehiculo_id` | `parcela_id` |
+| FK dependiente | `cliente_id` | `predio_id` (`fk_parcela_predio`) |
+| Campo UNIQUE | `placa` | `codigo`, único **dentro del predio**: `uq_parcela_predio_codigo (predio_id, codigo)` |
+| CHECK/enum | `tipo` | No hay enum: `parcela` no tiene un CHECK de valores cerrados. Su CHECK real es `ck_parcela_superficie_positiva` (`superficie > 0`). |
+| Package base | `com.parkflow` | `com.agrocontrol` |
+
+```text
+PREDIO (1) -------------------- (N) PARCELA
+predio_id [PK]                      parcela_id [PK]
+nombre [UNIQUE]                     predio_id [FK → predio.predio_id]
+                                    codigo [UNIQUE junto con predio_id]
+                                    superficie [CHECK > 0]
+```
+
+La relación es 1:N porque un predio tiene muchas parcelas y cada parcela pertenece a un solo predio: la FK `predio_id` está en la tabla `parcela`.
+
+### Tres niveles
+| Nivel | Cómo aparece la relación |
+|---|---|
+| Dominio | `Parcela` tiene `Long predioId`. Sin anotaciones JPA. |
+| JPA | `ParcelaJpaEntity` tiene `@ManyToOne(fetch = LAZY)` + `@JoinColumn(name = "predio_id")` hacia `PredioJpaEntity`. |
+| PostgreSQL | La FK `fk_parcela_predio` sigue en la base. Si llegara un `predio_id` inexistente, PostgreSQL rechazaría el INSERT. |
+
+### Árbol del módulo `plot`
+```text
+plot
+├── domain
+│   ├── model
+│   │   └── Parcela.java
+│   ├── exception
+│   │   └── CodigoParcelaDuplicadoException.java
+│   └── port
+│       ├── in
+│       │   ├── RegistrarParcelaUseCase.java
+│       │   └── ConsultarParcelaUseCase.java
+│       └── out
+│           └── ParcelaRepositoryPort.java
+├── application
+│   └── service
+│       └── ParcelaService.java
+└── infrastructure
+    └── adapter
+        ├── in
+        │   └── web
+        │       ├── ParcelaController.java
+        │       ├── ParcelaExceptionHandler.java
+        │       ├── dto
+        │       │   ├── CrearParcelaRequest.java
+        │       │   └── ParcelaResponse.java
+        │       └── mapper
+        │           └── ParcelaWebMapper.java
+        └── out
+            └── persistence
+                ├── ParcelaPersistenceAdapter.java
+                ├── entity
+                │   └── ParcelaJpaEntity.java
+                ├── mapper
+                │   └── ParcelaPersistenceMapper.java
+                └── repository
+                    └── SpringDataParcelaRepository.java
+```
+
+En el módulo `farm` se agregó `PredioNoEncontradoException`, que su `PredioExceptionHandler` traduce a 404.
+
+### Cómo se valida que el predio exista
+`ParcelaService` recibe `ConsultarPredioUseCase`, el Port IN **público** del módulo `farm`, y llama a `buscarPorId`. **No** usa `SpringDataPredioRepository`: ese repositorio es un detalle interno de la infraestructura de `farm`.
+
+```text
+ParcelaService
+    +--> ConsultarPredioUseCase      (correcto: contrato público de farm)
+    X--> SpringDataPredioRepository  (incorrecto: detalle interno de farm)
+```
+
+El único lugar fuera de `farm` que usa `SpringDataPredioRepository` es `ParcelaPersistenceAdapter`, y solo para `getReferenceById`: la referencia que exige `@ManyToOne`. Queda dentro de infraestructura; el caso de uso no la ve.
+
+### Endpoints
+| Operación | Método | Ruta | Status |
+|---|---|---|---|
+| Registrar parcela | POST | `/api/plots` | 201 / 400 / 404 / 409 |
+| Consultar por id | GET | `/api/plots/{id}` | 200 / 404 |
+| Listar por predio | GET | `/api/plots/farm/{predioId}` | 200 / 404 |
+
+`/api/plots` es la ruta que usa la API de la ficha del proyecto.
+
+### Pruebas
+Desde PowerShell, en la carpeta `agrocontrol-backend`, con la aplicación encendida:
+
+| Prueba | Archivo | Resultado esperado |
+|---|---|---|
+| Registro válido con predio existente | `http/parcela-valida.json` (predio 1, P-03) | 201 |
+| Consulta por id del registro creado | `GET /api/plots/{id}` | 200 |
+| Listado de parcelas del mismo predio | `GET /api/plots/farm/1` | 200: P-01, P-02 y P-03 |
+| Mismo código en otro predio | `http/parcela-mismo-codigo-otro-predio.json` (predio 2, P-02) | 201: la unicidad es por predio |
+| Predio inexistente | `http/parcela-predio-inexistente.json` (predio 999) | 404 "No existe el predio con id: 999" |
+| Código repetido en el mismo predio | `http/parcela-codigo-duplicado.json` (predio 1, "p-01") | 409: el código se normaliza a P-01, que ya existe |
+| Valor que viola el CHECK | `http/parcela-superficie-invalida.json` (superficie 0) | 400 "La superficie debe ser mayor que cero" |
+
+### Comprobación SQL
+```sql
+SELECT d.parcela_id, d.codigo, d.nombre AS parcela, d.predio_id AS fk_predio_id,
+       p.predio_id, p.nombre AS predio
+FROM agrocontrol.parcela d
+JOIN agrocontrol.predio p
+  ON p.predio_id = d.predio_id
+ORDER BY d.parcela_id;
+```
+Cada fila muestra que `fk_predio_id` coincide con un `predio_id` válido.
+
+### Respuestas para la defensa
+| Pregunta | Respuesta |
+|---|---|
+| ¿Tabla padre y dependiente? | `predio` es la padre; `parcela` es la dependiente. |
+| ¿Dónde está la FK física? | En `parcela.predio_id`, protegida por `fk_parcela_predio`. |
+| ¿Por qué `@ManyToOne` y no `@OneToMany` en la FK? | La columna FK está en `parcela`, el lado N: muchas parcelas apuntan a un predio. `@OneToMany` sería una colección en el predio, y no se necesita. |
+| ¿Por qué el dominio no tiene anotaciones JPA? | Porque representa el negocio; la relación se guarda como `predioId`, igual que la columna. |
+| ¿Cómo validas que el predio exista? | `ParcelaService` llama a `ConsultarPredioUseCase.buscarPorId` y lanza `PredioNoEncontradoException` (404). |
+| ¿Por qué no llamas al JpaRepository del predio desde el Service? | Porque es un detalle interno de `farm`; los módulos se comunican por sus puertos públicos. |
+| ¿Qué UNIQUE tiene la tabla dependiente? | `(predio_id, codigo)`: el código no se repite dentro del mismo predio, pero sí en predios distintos. |
+| ¿Qué pasa si la base recibe una FK inexistente? | PostgreSQL rechaza el INSERT por `fk_parcela_predio`. El caso de uso lo evita antes, pero la FK sigue siendo la última defensa. |
+| ¿Qué significa LAZY? | Que el predio relacionado no se lee de la base hasta que alguien lo necesita. Leer solo su id no hace otra consulta. |
+| Recorrido de POST a PostgreSQL | `ParcelaController` → `ParcelaWebMapper` → `RegistrarParcelaUseCase` → `ParcelaService` (¿existe el predio? ¿código repetido?) → `ParcelaRepositoryPort` → `ParcelaPersistenceAdapter` (`getReferenceById` del predio) → `ParcelaPersistenceMapper` → `SpringDataParcelaRepository` → `INSERT INTO agrocontrol.parcela`. |
+
 ## Capítulo 06 - Arquitectura hexagonal en el módulo Predio
 
 El módulo `farm` (Predio) se reorganizó para que **el caso de uso no conozca JPA ni PostgreSQL**. La funcionalidad es la misma del Capítulo 05; cambió quién depende de quién.

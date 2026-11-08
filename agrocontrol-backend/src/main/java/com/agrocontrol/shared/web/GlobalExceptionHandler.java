@@ -1,5 +1,6 @@
 package com.agrocontrol.shared.web;
 
+import com.agrocontrol.farm.domain.exception.PredioConParcelasException;
 import com.agrocontrol.farm.domain.exception.PredioDuplicadoException;
 import com.agrocontrol.farm.domain.exception.PredioNoEncontradoException;
 import com.agrocontrol.plot.domain.exception.CodigoParcelaDuplicadoException;
@@ -51,6 +52,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(PredioDuplicadoException.class)
     public ResponseEntity<ApiError> handlePredioDuplicado(PredioDuplicadoException ex,
                                                           HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request, Map.of());
+    }
+
+    @ExceptionHandler(PredioConParcelasException.class)
+    public ResponseEntity<ApiError> handlePredioConParcelas(PredioConParcelasException ex,
+                                                            HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request, Map.of());
     }
 

@@ -1,6 +1,7 @@
 package com.agrocontrol.farm.infrastructure.adapter.in.web.mapper;
 
 import com.agrocontrol.farm.domain.model.Predio;
+import com.agrocontrol.farm.infrastructure.adapter.in.web.dto.ActualizarPredioRequest;
 import com.agrocontrol.farm.infrastructure.adapter.in.web.dto.CrearPredioRequest;
 import com.agrocontrol.farm.infrastructure.adapter.in.web.dto.PredioResponse;
 
@@ -11,6 +12,11 @@ public final class PredioWebMapper {
     }
 
     public static Predio toDomain(CrearPredioRequest request) {
+        return Predio.nuevo(request.nombre(), request.ubicacion(), request.descripcion());
+    }
+
+    /** Los datos nuevos, todavia sin id (el id llega por la URL). */
+    public static Predio toDomain(ActualizarPredioRequest request) {
         return Predio.nuevo(request.nombre(), request.ubicacion(), request.descripcion());
     }
 

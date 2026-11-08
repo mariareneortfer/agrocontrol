@@ -4,11 +4,24 @@ import type { Predio } from '../models/Predio'
 interface PredioTableProps {
   predios: Predio[]
   parcelas: Parcela[]
+  // La tabla solo AVISA que se pidio una accion; no llama al service ni toca la API.
+  onEdit: (id: number) => void
+  onDelete: (predio: Predio) => void
+  editingId?: number | null
+  deletingId?: number | null
+  // true mientras otra accion esta en curso (cargando detalle, guardando o eliminando).
+  accionesBloqueadas?: boolean
 }
 
-// Tabla de predios. Solo MUESTRA lo que recibe por props; no sabe de donde vienen los datos.
-// Recibe tambien las parcelas para contar cuantas tiene cada predio (relacion 1:N).
-export default function PredioTable({ predios, parcelas }: PredioTableProps) {
+export default function PredioTable({
+  predios,
+  parcelas,
+  onEdit,
+  onDelete,
+  editingId,
+  deletingId,
+  accionesBloqueadas = false,
+}: PredioTableProps) {
   const contarParcelas = (predioId: number) =>
     parcelas.filter((parcela) => parcela.predioId === predioId).length
 
@@ -28,13 +41,15 @@ export default function PredioTable({ predios, parcelas }: PredioTableProps) {
               <th>Descripción</th>
               <th>Parcelas</th>
               <th>Estado</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {predios.map((predio) => {
               const totalParcelas = contarParcelas(predio.id)
+              const eliminando = deletingId === predio.id
               return (
-                <tr key={predio.id}>
+                <tr key={predio.id} className={editingId === predio.id ? 'row-editing' : undefined}>
                   <td>{predio.id}</td>
                   <td className="name-cell">{predio.nombre}</td>
                   <td>{predio.ubicacion ?? '—'}</td>
@@ -44,6 +59,26 @@ export default function PredioTable({ predios, parcelas }: PredioTableProps) {
                     <span className={`status-badge ${totalParcelas > 0 ? 'status-active' : 'status-inactive'}`}>
                       {totalParcelas > 0 ? 'Con parcelas' : 'Sin parcelas'}
                     </span>
+                  </td>
+                  <td>
+                    <div className="actions-cell">
+                      <button
+                        type="button"
+                        className="btn-small"
+                        onClick={() => onEdit(predio.id)}
+                        disabled={accionesBloqueadas}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-small btn-danger"
+                        onClick={() => onDelete(predio)}
+                        disabled={accionesBloqueadas}
+                      >
+                        {eliminando ? 'Eliminando...' : 'Eliminar'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )

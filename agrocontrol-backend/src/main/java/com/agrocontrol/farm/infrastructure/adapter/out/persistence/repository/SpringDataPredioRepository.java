@@ -14,6 +14,9 @@ public interface SpringDataPredioRepository extends JpaRepository<PredioJpaEntit
     /** Para la regla UNIQUE de predio.nombre. */
     boolean existsByNombre(String nombre);
 
+    /** Para actualizar: hay OTRO predio (id distinto) con ese nombre. */
+    boolean existsByNombreAndIdNot(String nombre, Long id);
+
     /** Para el filtro opcional GET /api/farms?nombre=... */
     List<PredioJpaEntity> findByNombreContainingIgnoreCaseOrderByIdAsc(String nombre);
 }

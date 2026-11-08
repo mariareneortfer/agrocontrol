@@ -22,4 +22,13 @@ public interface PredioRepositoryPort {
 
     /** Apoya la regla UNIQUE de predio.nombre (uq_predio_nombre). */
     boolean existePorNombre(String nombre);
+
+    /** Para actualizar: el nombre nuevo no puede pertenecer a OTRO predio. */
+    boolean existePorNombreEnOtroPredio(String nombre, Long idExcluido);
+
+    /**
+     * Borra el predio. Si todavia tiene parcelas, lanza PredioConParcelasException
+     * (PostgreSQL lo impide con fk_parcela_predio).
+     */
+    void eliminar(Predio predio);
 }

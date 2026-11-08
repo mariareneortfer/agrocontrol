@@ -19,6 +19,6 @@ public class ProjectInfoService {
     }
 
     public String backendStage() {
-        return "FRONTEND_CONECTADO";
+        return "CRUD_PREDIO";
     }
 }

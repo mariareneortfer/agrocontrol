@@ -9,6 +9,49 @@ Backend real de AgroControl con Spring Boot, Maven y Java 21. Desde el Capítulo
 | Entidad dependiente N | Parcela (tabla `parcela`), módulo `plot` |
 | Relación | 1 predio tiene muchas parcelas (FK `parcela.predio_id`) |
 
+## CRUD completo de Predio (Guía 06 de React)
+
+Se agregaron `PUT` y `DELETE` en todas las capas hexagonales del módulo `farm`.
+
+| Capa | Cambio |
+|---|---|
+| Port IN | `ActualizarPredioUseCase`, `EliminarPredioUseCase` (nuevos) |
+| Port OUT `PredioRepositoryPort` | `existePorNombreEnOtroPredio(nombre, id)`, `eliminar(predio)` |
+| `PredioService` | `actualizar` y `eliminar`, los dos con `@Transactional` |
+| `SpringDataPredioRepository` | `existsByNombreAndIdNot` |
+| `PredioPersistenceAdapter` | `eliminar`: `deleteById` + `flush`, y traduce la violación de la FK |
+| Excepción de dominio | `PredioConParcelasException` → **409** en `GlobalExceptionHandler` |
+| DTO | `ActualizarPredioRequest` (el id viaja en la URL, no en el body) |
+| `PredioController` | `PUT /{id}`, `DELETE /{id}`. `GET /{id}` ahora responde 404 con `ApiError` (antes era un 404 sin cuerpo) |
+
+### Contrato
+| Operación | Método y ruta | Respuestas |
+|---|---|---|
+| Listar | `GET /api/farms` | 200 |
+| Buscar | `GET /api/farms/{id}` | 200 · 404 |
+| Crear | `POST /api/farms` | 201 · 400 · 409 (nombre repetido) |
+| Actualizar | `PUT /api/farms/{id}` | 200 · 400 · 404 · 409 (nombre de **otro** predio) |
+| Eliminar | `DELETE /api/farms/{id}` | **204** sin cuerpo · 404 · **409** (tiene parcelas) |
+
+### ¿Qué pasa al eliminar un predio que tiene parcelas?
+`fk_parcela_predio` no tiene `ON DELETE CASCADE`, así que PostgreSQL **rechaza** el `DELETE`. El adaptador hace `flush()` para que el error aparezca en ese momento, lo captura (`DataIntegrityViolationException`) y lo convierte en `PredioConParcelasException`. La transacción se deshace y la respuesta es:
+
+```json
+{ "status": 409, "message": "No se puede eliminar el predio San Isidro porque tiene parcelas asociadas. Elimine o mueva primero sus parcelas." }
+```
+
+¿Por qué no se cuentan las parcelas en `PredioService`? Porque para eso `farm` tendría que depender de `plot`, y `plot` ya depende de `farm` (`ParcelaService` usa `ConsultarPredioUseCase`). Sería una **dependencia circular**. La FK de PostgreSQL ya protege la regla; el adaptador solo la traduce a un error de dominio.
+
+**Borrado físico vs baja lógica:** aquí se usa borrado físico (la fila desaparece). La baja lógica necesitaría una columna `activo` (`UPDATE ... SET activo = false`), que la tabla `predio` no tiene.
+
+### Pruebas con curl.exe
+```powershell
+curl.exe -i http://localhost:8080/api/farms/999
+curl.exe -i -X PUT http://localhost:8080/api/farms/1 -H "Content-Type: application/json" -d "{\"nombre\":\"San Isidro\",\"ubicacion\":\"Km 12 carretera al norte\",\"descripcion\":null}"
+curl.exe -i -X DELETE http://localhost:8080/api/farms/1
+```
+Resultados: `404`; `200` (es el mismo nombre del propio predio, así que no hay conflicto); `409` (San Isidro tiene parcelas).
+
 ## Conexión con el frontend (Guía 05 de React)
 
 Se hicieron dos cambios para que `agrocontrol-frontend` (React + Vite en `http://localhost:5173`) pueda usar esta API:

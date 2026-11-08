@@ -1,9 +1,11 @@
 package com.agrocontrol.farm.infrastructure.adapter.out.persistence;
 
+import com.agrocontrol.farm.domain.exception.PredioConParcelasException;
 import com.agrocontrol.farm.domain.model.Predio;
 import com.agrocontrol.farm.domain.port.out.PredioRepositoryPort;
 import com.agrocontrol.farm.infrastructure.adapter.out.persistence.mapper.PredioPersistenceMapper;
 import com.agrocontrol.farm.infrastructure.adapter.out.persistence.repository.SpringDataPredioRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
@@ -55,5 +57,22 @@ public class PredioPersistenceAdapter implements PredioRepositoryPort {
     @Override
     public boolean existePorNombre(String nombre) {
         return repository.existsByNombre(nombre);
+    }
+
+    @Override
+    public boolean existePorNombreEnOtroPredio(String nombre, Long idExcluido) {
+        return repository.existsByNombreAndIdNot(nombre, idExcluido);
+    }
+
+    @Override
+    public void eliminar(Predio predio) {
+        try {
+            repository.deleteById(predio.getId());
+            // flush() ejecuta el DELETE ahora mismo, asi el error de la FK aparece aqui y no al confirmar.
+            repository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            // fk_parcela_predio: todavia hay filas en parcela que apuntan a este predio.
+            throw new PredioConParcelasException(predio.getNombre());
+        }
     }
 }

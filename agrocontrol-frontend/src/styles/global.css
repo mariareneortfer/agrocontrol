@@ -318,3 +318,36 @@ button, input, select, textarea { font: inherit; }
   border-radius: 10px;
   font-weight: 600;
 }
+
+/* ===== Guia 06: acciones CRUD en la tabla y modo edicion ===== */
+.actions-cell {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-small {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid #c5d6bd;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f4d2b;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-small:hover { background: #f3f7f1; }
+.btn-danger { border-color: #fecaca; color: #b91c1c; }
+.btn-danger:hover { background: #fef2f2; }
+.btn-small:disabled { opacity: .6; cursor: not-allowed; }
+
+.form-title { margin: 0 0 16px; }
+.entity-form--editing { border-color: #7cb342; box-shadow: 0 0 0 3px rgba(124, 179, 66, 0.18); }
+.data-table tbody tr.row-editing { background: #f1f8e9; }
+
+.state-card.success {
+  border: 1px solid #bbf7d0;
+  background: #ecfdf5;
+  color: #166534;
+}

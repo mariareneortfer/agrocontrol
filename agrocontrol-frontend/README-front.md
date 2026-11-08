@@ -3,6 +3,97 @@
 Frontend de **AgroControl** (proyecto 16) con **React + TypeScript + Vite**, creado y ejecutado desde **WebStorm**.
 Consumirá más adelante la API REST del backend Spring Boot (`agrocontrol-backend`, puerto 8080).
 
+## Guía 06 - CRUD completo de Predio
+
+La entidad padre (**Predio**) tiene el CRUD completo en el frontend y en el backend: listar, buscar por id, crear, editar y eliminar.
+
+### Equivalencias con el ejemplo del profesor
+| Profesor (ParkFlow360) | AgroControl |
+|---|---|
+| `clienteService` (5 métodos) | `predioService`: `listar`, `obtenerPorId`, `crear`, `actualizar`, `eliminar` |
+| `ClienteCreateRequest` / `ClienteUpdateRequest` | `CrearPredioRequest` / `ActualizarPredioRequest` |
+| `ClienteTable` con `onEdit` / `onDelete` | `PredioTable` con `onEdit`, `onDelete`, `editingId`, `deletingId`, `accionesBloqueadas` |
+| `ClienteForm` crear/editar | `PredioForm` crear/editar (prop `predio`) |
+| DELETE de un cliente con vehículos → 409 | DELETE de un predio con parcelas → **409** (`PredioConParcelasException`) |
+| `GET/PUT/DELETE /api/clientes/{id}` | `GET/PUT/DELETE /api/farms/{id}`, agregados al backend en esta guía |
+
+### Endpoints nuevos en el backend
+Antes solo existían `GET` y `POST`. Se agregaron `PUT /api/farms/{id}` y `DELETE /api/farms/{id}`. Detalle en el `README.md` del backend.
+
+### Decisión técnica: `key` en lugar de `useEffect` para cargar el formulario
+La guía copia los datos de la prop `cliente` al estado del formulario con un `useEffect`. Aquí se hace lo mismo con la técnica que **recomienda la documentación de React**:
+```tsx
+<PredioForm key={editingPredio ? `editar-${editingPredio.id}` : 'nuevo'} predio={editingPredio} ... />
+```
+- Cuando cambia la `key`, React **descarta** el formulario anterior y crea uno nuevo. `useState(() => predioAFormData(predio))` toma los datos del predio elegido.
+- Así no hace falta un `useEffect` que haga `setFormData` (ESLint, con `react-hooks/set-state-in-effect`, marca ese patrón), y se evita un render con datos viejos.
+- El resultado es el mismo que pide la guía: al tocar Editar se cargan los datos, al Cancelar vuelve a "Nuevo predio" y **ningún** efecto hace un PUT automático.
+
+### Flujos
+| Acción | Flujo |
+|---|---|
+| **Listar** | `PrediosPage` → `predioService.listar` → `GET /api/farms` → Controller → Service → Adapter → `SELECT` → JSON → `setPredios` |
+| **Editar** | Clic en Editar → `GET /api/farms/{id}` (versión actual) → `editingPredio` → el formulario se crea con esos datos → Actualizar → `PUT /api/farms/{id}` → `UPDATE` → 200 con el predio → `map()` reemplaza **solo** esa fila |
+| **Crear** | Crear predio → validación → `POST /api/farms` → `INSERT` → 201 con `id` → `[...prev, creado]` |
+| **Eliminar** | Clic en Eliminar → `window.confirm` → `DELETE /api/farms/{id}` → **204** → `filter()` quita la fila. Si es **409**, la fila **queda** y se muestra el error |
+| **Cancelar edición** | `setEditingPredio(null)`. No hay petición HTTP y la fila no cambia |
+
+### Bloqueos (evitar doble PUT o doble DELETE)
+- Mientras carga el detalle, guarda o elimina, `accionesBloqueadas = true` y **todos** los botones Editar/Eliminar se deshabilitan.
+- El botón del formulario dice **"Guardando..."** y el de la fila **"Eliminando..."**.
+- La fila que se está editando se resalta en verde.
+
+### Práctica evaluada
+| Práctica | Cómo se demuestra |
+|---|---|
+| Listar, buscar, crear, actualizar y eliminar en el service | `predioService.ts` |
+| Editar y Eliminar por callbacks | `PredioTable` no importa `predioService` |
+| Un formulario para crear y editar | `PredioForm` con la prop `predio` |
+| GET/{id} antes de editar | `handleEdit` llama a `predioService.obtenerPorId` |
+| Sincronizar después de POST, PUT y DELETE | `[...prev, x]`, `map()` y `filter()` con la respuesta del backend |
+| Cancelar edición | Botón "Cancelar edición", sin HTTP |
+| Bloquear acciones | `accionesBloqueadas`, `saving` y `deletingId` |
+| Un 404 real | Abrir dos pestañas, eliminar un predio en una y tocar Editar en la otra → `Error 404: No existe el predio con id: X`. También `curl.exe -i http://localhost:8080/api/farms/999` |
+| Eliminar un padre con hijas | Eliminar San Isidro → **409**: "No se puede eliminar el predio San Isidro porque tiene parcelas asociadas". La fila sigue en la tabla y en PostgreSQL |
+| Evidencia de Network | GET, GET/{id}, POST (201), PUT (200) y DELETE (204) |
+
+### Respuestas para la defensa oral
+1. **CRUD:** Create = POST, Read = GET, Update = PUT, Delete = DELETE.
+2. **`GET /farms` vs `GET /farms/{id}`:** el primero devuelve la **colección** (`Predio[]`) y el segundo **un** predio, o 404.
+3. **¿Por qué GET/{id} antes de editar?** Para editar la versión **actual** que tiene la base de datos. Si otro usuario lo cambió o lo borró, lo sabemos antes de abrir el formulario.
+4. **El id en la URL:** identifica **qué** recurso se lee, actualiza o elimina.
+5. **`POST /farms` vs `PUT /farms/7`:** POST crea un recurso **nuevo** en la colección y el servidor le da el id. PUT reemplaza los datos del recurso **7**, que ya existe.
+6. **¿Por qué POST no es idempotente?** Enviarlo dos veces intenta crear dos predios. En AgroControl, el segundo daría 409 por el nombre.
+7. **¿Por qué PUT es idempotente?** Enviar el mismo PUT 1 o 10 veces deja el predio en el mismo estado final.
+8. **¿Por qué DELETE es idempotente?** Después del primero el predio ya no existe. Los siguientes dan 404, pero el estado final es el mismo: borrado.
+9. **Responsabilidad de `PredioTable`:** mostrar filas y avisar con `onEdit` / `onDelete` qué pidió el usuario.
+10. **¿Por qué la tabla no llama al service?** Para que sea reutilizable y fácil de probar. Quién llama a la API y cómo se actualiza el estado lo decide la página.
+11. **`editingPredio`:** es el predio que se está editando (traído con GET/{id}). Si es `null`, el formulario está en modo crear.
+12. **¿Cómo sabe el formulario si crea o edita?** Por la prop `predio`: si hay predio con id, edita (PUT); si no, crea (POST).
+13. **¿Por qué la guía usa `useEffect` cuando cambia la prop?** Para copiar los datos del predio al estado del formulario. En AgroControl lo resolvemos con `key`: al cambiar la key, React crea un formulario nuevo con esos datos. Es la forma que recomienda React y evita un `setState` dentro de un efecto.
+14. **¿Por qué no hacer un PUT dentro de un efecto?** Se ejecutaría solo al montar o al cambiar la prop (y dos veces con `StrictMode`), sin que el usuario lo pida. Una modificación de datos solo debe salir de una acción del usuario.
+15. **`CrearPredioRequest` vs `ActualizarPredioRequest`:** hoy tienen los mismos campos, pero se nombran por su intención. Si editar cambia, solo se toca uno.
+16. **Al presionar Editar:** `handleEdit(id)` → GET/{id} → `setEditingPredio` → el formulario aparece con los datos y la fila se resalta.
+17. **Al presionar Cancelar edición:** `setEditingPredio(null)` → el formulario vuelve a "Nuevo predio". No sale ninguna petición HTTP.
+18. **¿Qué envía el PUT?** `{ nombre, ubicacion, descripcion }` en el body, y el id en la URL.
+19. **¿Por qué no cambiar la fila antes de que el PUT responda?** Si el backend responde 400, 404 o 409, la pantalla mostraría algo que **no** está en PostgreSQL.
+20. **¿Cómo se reemplaza solo el predio editado?** `prev.map(p => p.id === guardado.id ? guardado : p)`.
+21. **`map()` y `filter()`:** `map` devuelve un arreglo del mismo tamaño con un elemento cambiado (editar). `filter` devuelve uno sin el elemento (eliminar).
+22. **¿Qué devuelve DELETE?** **204 No Content**, sin cuerpo.
+23. **¿Por qué `apiClient` maneja el 204?** Porque `response.json()` sobre un cuerpo vacío lanzaría un error, aunque el borrado haya salido bien.
+24. **¿Por qué confirmar antes de DELETE?** Es irreversible (borrado físico) y un clic accidental no debería borrar datos.
+25. **404 en GET/{id}:** el predio ya no existe, por ejemplo si otro usuario lo eliminó.
+26. **400 en PUT:** el JSON no cumple `ActualizarPredioRequest` (nombre vacío o demasiado largo).
+27. **409 al eliminar un predio:** todavía tiene parcelas asociadas.
+28. **Relación con 1:N:** cada parcela tiene `predio_id`, y `fk_parcela_predio` impide borrar el predio mientras alguna parcela lo apunte.
+29. **Borrado físico vs baja lógica:** el físico elimina la fila (DELETE). La baja lógica la conserva con `activo = false` (UPDATE). AgroControl no tiene columna `activo`.
+30. **Ventaja de actualizar el estado local:** es instantáneo y no necesita otro GET.
+31. **Ventaja de volver a hacer GET:** muestra exactamente lo que tiene el servidor, incluso cambios de otros usuarios.
+32. **¿Cómo se evita un doble DELETE o PUT?** Con los botones deshabilitados (`accionesBloqueadas`, `saving`) mientras la petición está en curso.
+33. **¿Qué mirar en Network?** Método, URL (con el id), status, Payload (en PUT y POST) y Response (`message` del ApiError).
+34. **PUT completo:** Actualizar predio → `validarPredio` → `predioService.actualizar(id, payload)` → `apiFetch` con `PUT /api/farms/{id}` → `PredioController.actualizar` (`@Valid`) → `PredioService.actualizar` (`@Transactional`: existe → 404, nombre de otro → 409) → `guardar` con id → JPA `UPDATE` → 200 con `PredioResponse` → `onSaved(actualizado, 'edit')` → `map()` → React vuelve a dibujar la fila.
+35. **DELETE completo:** Eliminar → `confirm` → `predioService.eliminar(id)` → `DELETE /api/farms/{id}` → `PredioController.eliminar` → `PredioService.eliminar` (`@Transactional`, 404 si no existe) → adaptador `deleteById` + `flush` → si **no** tiene parcelas: `DELETE` en PostgreSQL → 204 → `filter()` quita la fila. Si **tiene** parcelas: PostgreSQL rechaza por `fk_parcela_predio` → `PredioConParcelasException` → rollback → **409** → la fila queda y se muestra el mensaje.
+
 ## Guía 05 - Conexión React ↔ Spring Boot
 
 Los mocks se eliminaron. Las tablas cargan **datos reales de PostgreSQL** a través del backend, y los formularios **crean** predios y parcelas con `POST`.

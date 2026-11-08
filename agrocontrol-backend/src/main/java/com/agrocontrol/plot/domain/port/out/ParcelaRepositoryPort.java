@@ -12,6 +12,8 @@ public interface ParcelaRepositoryPort {
 
     Optional<Parcela> buscarPorId(Long id);
 
+    List<Parcela> listarTodas();
+
     List<Parcela> listarPorPredioId(Long predioId);
 
     /** Apoya la regla UNIQUE (predio_id, codigo): uq_parcela_predio_codigo. */

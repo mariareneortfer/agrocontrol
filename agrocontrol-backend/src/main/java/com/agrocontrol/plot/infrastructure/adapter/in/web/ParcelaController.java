@@ -43,6 +43,14 @@ public class ParcelaController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ParcelaWebMapper.toResponse(registrada));
     }
 
+    /** GET /api/plots -> 200 con todas las parcelas (lo usa el listado del frontend, Guia 05). */
+    @GetMapping
+    public List<ParcelaResponse> listar() {
+        return consultar.listar().stream()
+                .map(ParcelaWebMapper::toResponse)
+                .toList();
+    }
+
     /** GET /api/plots/{id} -> 200 o 404. */
     @GetMapping("/{id}")
     public ResponseEntity<ParcelaResponse> buscar(@PathVariable Long id) {

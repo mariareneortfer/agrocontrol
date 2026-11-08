@@ -295,3 +295,26 @@ button, input, select, textarea { font: inherit; }
   .form-span-2 { grid-column: auto; }
   .form-actions { flex-direction: column-reverse; }
 }
+
+/* ===== Guia 05: estados de carga y errores de la API ===== */
+.state-card {
+  padding: 14px 16px;
+  border: 1px solid #dfe8da;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #5d6b5d;
+}
+
+.state-card.error,
+.form-error {
+  border: 1px solid #fecaca;
+  background: #fdecec;
+  color: #991b1b;
+}
+
+.form-error {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+}

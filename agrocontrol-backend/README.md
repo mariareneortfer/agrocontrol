@@ -9,6 +9,49 @@ Backend real de AgroControl con Spring Boot, Maven y Java 21. Desde el Capítulo
 | Entidad dependiente N | Parcela (tabla `parcela`), módulo `plot` |
 | Relación | 1 predio tiene muchas parcelas (FK `parcela.predio_id`) |
 
+## Conexión con el frontend (Guía 05 de React)
+
+Se hicieron dos cambios para que `agrocontrol-frontend` (React + Vite en `http://localhost:5173`) pueda usar esta API:
+
+### 1. CORS: `shared/config/CorsConfig.java`
+El navegador bloquea las respuestas de otro origen (puerto 8080) si el backend no autoriza explícitamente el origen de Vite (puerto 5173).
+```java
+registry.addMapping("/api/**")
+        .allowedOrigins("http://localhost:5173")
+        .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+        .allowedHeaders("*");
+```
+- Se autoriza **un solo origen**, no `*`.
+- CORS **no** autentica usuarios ni protege la base de datos: solo decide qué página web del navegador puede leer las respuestas. `curl` y Postman no son navegadores, por eso nunca tuvieron problemas de CORS.
+
+### 2. Nuevo endpoint `GET /api/plots` (todas las parcelas)
+El listado del frontend necesita todas las parcelas, y antes solo existía `GET /api/plots/farm/{predioId}`. Se agregó en todas las capas hexagonales:
+
+| Capa | Cambio |
+|---|---|
+| Port IN `ConsultarParcelaUseCase` | `List<Parcela> listar()` |
+| Port OUT `ParcelaRepositoryPort` | `List<Parcela> listarTodas()` |
+| `ParcelaService` | `listar()` con `@Transactional(readOnly = true)` |
+| `SpringDataParcelaRepository` | `findAllByOrderByIdAsc()` |
+| `ParcelaPersistenceAdapter` | `listarTodas()` |
+| `ParcelaController` | `@GetMapping` → `GET /api/plots` |
+
+Prueba:
+```powershell
+curl.exe -i http://localhost:8080/api/plots
+```
+Respuesta esperada: `200` con un arreglo JSON de parcelas.
+
+### Contrato que usa el frontend
+| Método y ruta | Body | Respuesta |
+|---|---|---|
+| `GET /api/farms` | - | `200` con `PredioResponse[]` |
+| `POST /api/farms` | `{ nombre, ubicacion, descripcion }` | `201` con `PredioResponse` · `400` · `409` |
+| `GET /api/plots` | - | `200` con `ParcelaResponse[]` |
+| `POST /api/plots` | `{ predioId, codigo, nombre, superficie, unidadSuperficie, ubicacionReferencial }` | `201` con `ParcelaResponse` · `400` · `404` · `409` |
+
+Los errores siempre llegan con el formato `ApiError` del Capítulo 08 (`status`, `message`, `fieldErrors`), y el frontend muestra ese `message`.
+
 ## Capítulo 08 - Errores profesionales, validaciones y transacciones
 
 Todos los errores de la API responden con **la misma forma** (`ApiError`). Un solo `@RestControllerAdvice` (`GlobalExceptionHandler`) decide qué código HTTP corresponde a cada error, y los controllers no tienen `try/catch`.

@@ -11,5 +11,7 @@ public interface SpringDataParcelaRepository extends JpaRepository<ParcelaJpaEnt
     /** "predio_Id": navega al atributo predio y luego a su id, es decir, la FK predio_id. */
     boolean existsByPredio_IdAndCodigo(Long predioId, String codigo);
 
+    List<ParcelaJpaEntity> findAllByOrderByIdAsc();
+
     List<ParcelaJpaEntity> findByPredio_IdOrderByIdAsc(Long predioId);
 }

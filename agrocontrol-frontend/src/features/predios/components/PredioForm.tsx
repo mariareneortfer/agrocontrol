@@ -1,7 +1,15 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
+import { ApiError, mensajeDeError } from '../../../services/http/apiClient'
+import type { Predio } from '../models/Predio'
+import { predioService } from '../services/predioService'
 import type { CrearPredioRequest } from '../types/CrearPredioRequest'
 import type { PredioFormData } from '../types/PredioFormData'
 import { validarPredio, type PredioFormErrors } from '../utils/predioValidation'
+
+interface PredioFormProps {
+  // La pagina recibe el predio que devolvio el backend (con su id real).
+  onCreated?: (predio: Predio) => void
+}
 
 const initialPredioForm: PredioFormData = {
   nombre: '',
@@ -13,10 +21,11 @@ const initialPredioForm: PredioFormData = {
 // Texto vacio -> null, porque en la base de datos la columna queda sin valor.
 const textoONull = (valor: string) => (valor.trim() ? valor.trim() : null)
 
-export default function PredioForm() {
+export default function PredioForm({ onCreated }: PredioFormProps) {
   const [formData, setFormData] = useState<PredioFormData>(initialPredioForm)
   const [errors, setErrors] = useState<PredioFormErrors>({})
   const [mensaje, setMensaje] = useState('')
+  const [apiError, setApiError] = useState('')
   const [enviando, setEnviando] = useState(false)
 
   const totalErrores = Object.keys(errors).length
@@ -33,11 +42,13 @@ export default function PredioForm() {
     setFormData(initialPredioForm)
     setErrors({})
     setMensaje('')
+    setApiError('')
   }
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setMensaje('')
+    setApiError('')
 
     const validationErrors = validarPredio(formData)
     setErrors(validationErrors)
@@ -49,16 +60,24 @@ export default function PredioForm() {
       descripcion: textoONull(formData.descripcion),
     }
 
-    // Envio simulado de 500 ms: en la Guia 05 aqui ira la llamada real a POST /api/farms.
-    setEnviando(true)
-    setTimeout(() => {
-      console.log('Predio listo para API:', predioPayload)
-      setEnviando(false)
-      setMensaje('Datos válidos. Predio listo para enviarse al backend.')
+    try {
+      setEnviando(true)
+      // POST /api/farms: el backend valida, guarda en PostgreSQL y responde 201 con el predio creado.
+      const creado = await predioService.crear(predioPayload)
+      onCreated?.(creado)
+      setMensaje(`Predio "${creado.nombre}" creado correctamente (id ${creado.id}).`)
       if (formData.limpiarAlGuardar) {
         setFormData(initialPredioForm)
       }
-    }, 500)
+    } catch (err) {
+      // 400 trae fieldErrors del backend: se muestran junto a cada campo.
+      if (err instanceof ApiError && Object.keys(err.fieldErrors).length > 0) {
+        setErrors(err.fieldErrors)
+      }
+      setApiError(mensajeDeError(err))
+    } finally {
+      setEnviando(false)
+    }
   }
 
   return (
@@ -98,6 +117,7 @@ export default function PredioForm() {
           El formulario tiene {totalErrores} {totalErrores === 1 ? 'error' : 'errores'}.
         </div>
       )}
+      {apiError && <div className="form-error">{apiError}</div>}
       {mensaje && <div className="form-success">{mensaje}</div>}
 
       <div className="form-actions">

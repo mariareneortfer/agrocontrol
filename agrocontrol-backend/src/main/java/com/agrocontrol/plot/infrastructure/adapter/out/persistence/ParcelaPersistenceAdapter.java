@@ -42,6 +42,13 @@ public class ParcelaPersistenceAdapter implements ParcelaRepositoryPort {
     }
 
     @Override
+    public List<Parcela> listarTodas() {
+        return repository.findAllByOrderByIdAsc().stream()
+                .map(ParcelaPersistenceMapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public List<Parcela> listarPorPredioId(Long predioId) {
         return repository.findByPredio_IdOrderByIdAsc(predioId).stream()
                 .map(ParcelaPersistenceMapper::toDomain)

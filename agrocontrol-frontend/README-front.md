@@ -3,6 +3,108 @@
 Frontend de **AgroControl** (proyecto 16) con **React + TypeScript + Vite**, creado y ejecutado desde **WebStorm**.
 Consumirá más adelante la API REST del backend Spring Boot (`agrocontrol-backend`, puerto 8080).
 
+## Guía 05 - Conexión React ↔ Spring Boot
+
+Los mocks se eliminaron. Las tablas cargan **datos reales de PostgreSQL** a través del backend, y los formularios **crean** predios y parcelas con `POST`.
+
+### Contrato real del backend (fuente de verdad)
+El backend de AgroControl no tiene Swagger instalado. El contrato se tomó de los `@RestController` y los DTO (`record`) reales, y se probó con `curl.exe` en los Capítulos 07 y 08.
+
+| Profesor (ParkFlow360) | AgroControl |
+|---|---|
+| `GET/POST /api/clientes` | `GET/POST /api/farms` (`PredioController`) |
+| `GET/POST /api/vehiculos` | `GET/POST /api/plots` (`ParcelaController`) |
+| `ClienteCreateRequest = Omit<Cliente, 'id'>` | `CrearPredioRequest` (interface propia, Guía 04) |
+| `VehiculoCreateRequest` con `clienteId` | `CrearParcelaRequest` con `predioId` (así lo espera `CrearParcelaRequest.java`) |
+| `src/api/apiClient.ts` | `src/services/http/apiClient.ts` (la carpeta reservada en la Guía 01) |
+| Lectura de `VITE_API_URL` en el apiClient | `src/config/env.ts` (la carpeta `config/` de la Guía 01) |
+
+No se usa `Omit<Predio, 'id'>`, porque el request no es "el modelo menos el id": `ubicacion` puede ser `null` y la parcela no manda `id`. Por eso cada DTO tiene su interface exacta.
+
+### Cambios en el backend
+- `CorsConfig.java`: permite el origen `http://localhost:5173`.
+- Nuevo `GET /api/plots`: lista todas las parcelas. Antes solo existía `/api/plots/farm/{id}`.
+
+Detalle en el `README.md` de `agrocontrol-backend`.
+
+### Archivos nuevos
+| Archivo | Responsabilidad |
+|---|---|
+| `.env.development` | `VITE_API_URL=http://localhost:8080/api`, solo datos públicos |
+| `src/vite-env.d.ts` | Tipado de `import.meta.env.VITE_API_URL` |
+| `src/config/env.ts` | Único lugar donde se lee la variable |
+| `src/services/http/apiClient.ts` | `apiFetch`: URL base, `Content-Type`, `response.ok`, `ApiError` con `status`, `message` y `fieldErrors` |
+| `features/predios/services/predioService.ts` | `listar()` → GET `/farms`, `crear()` → POST `/farms` |
+| `features/parcelas/services/parcelaService.ts` | `listar()` → GET `/plots`, `crear()` → POST `/plots` |
+
+### Detalle técnico: `ApiError` sin "parameter properties"
+La guía escribe `constructor(public status: number, ...)`. El `tsconfig.app.json` de Vite tiene `erasableSyntaxOnly: true`, y con esa opción esa sintaxis **no compila**: `npm run build` da el error `TS1294`. Por eso, en `apiClient.ts`, los campos se declaran aparte (`readonly status: number`) y se asignan en el constructor.
+
+### Cómo se conecta cada pantalla
+- **PrediosPage:** `useEffect` → `Promise.all([predioService.listar(), parcelaService.listar()])`. Hace falta pedir las dos para contar las parcelas de cada predio. Estados: `loading`, `error` y datos.
+- **ParcelasPage:** lo mismo. Los predios se usan para mostrar el nombre en la tabla y para el `<select>` del formulario (la prop `predios`).
+- **PredioForm / ParcelaForm:** el `setTimeout` de la Guía 04 se reemplazó por `await predioService.crear(payload)`. El botón queda en "Guardando..." mientras espera (`submitting`). `onCreated` agrega a la tabla **el objeto que devolvió el backend**, con su `id` real.
+- **Errores del backend:** se muestra `Error 409: Ya existe la parcela P-01 en el predio 1`. Si el backend responde 400 con `fieldErrors`, cada mensaje aparece junto a su campo.
+- **Backend apagado o CORS mal configurado:** "No se pudo conectar con el backend (...)". `fetch` no recibe ninguna respuesta HTTP.
+
+### La relación 1:N al crear una parcela
+React **no crea** la relación: elige un predio en el `<select>` y envía su id como `predioId: 1`. El backend verifica que el predio exista (`PredioNoEncontradoException` → 404) y que el código no se repita (`CodigoParcelaDuplicadoException` → 409). PostgreSQL la protege con `fk_parcela_predio` y `uq_parcela_predio_codigo`.
+
+### Pruebas y evidencias (DevTools → Network)
+| # | Acción | Qué se ve en Network |
+|---|---|---|
+| 1 | Abrir `/predios` | `GET /api/farms` y `GET /api/plots` → **200**, con el JSON en Response |
+| 2 | Crear el predio "Los Algarrobos" | `POST /api/farms` → **201**. El Payload lleva `{nombre, ubicacion, descripcion}` y la fila aparece en la tabla |
+| 3 | Crear la parcela `p-08` en San Isidro | `POST /api/plots` → **201**. El Payload lleva `predioId: 1`, `codigo: "P-08"` y `superficie` como número |
+| 4 | Repetir el código `P-01` en San Isidro | `POST /api/plots` → **409**. El mensaje del backend aparece en rojo en el formulario |
+| 5 | Repetir un nombre de predio | `POST /api/farms` → **409** |
+
+En desarrollo, cada GET aparece **dos veces** y la primera queda **cancelada**. `StrictMode` monta el componente dos veces y el `AbortController` cancela la primera petición. Es el comportamiento esperado.
+
+### Tres fallos intencionales y su diagnóstico
+| Fallo | Cómo se provoca | Qué se ve | Diagnóstico |
+|---|---|---|---|
+| **URL incorrecta** | En `.env.development`, cambiar `/api` por `/apix` y reiniciar `npm run dev` | **404**: "La ruta solicitada no existe" | El backend respondió, pero la ruta no coincide con el `@RequestMapping` |
+| **CORS** | En `CorsConfig`, cambiar `5173` por `5174` y reiniciar el backend | "No se pudo conectar..." y en Console: *blocked by CORS policy* | La petición sí llega (`curl` funciona), pero el navegador no deja leer la respuesta |
+| **Body inválido** | En la consola del navegador, enviar un POST sin campos (ver abajo) | **400** con `fieldErrors` por campo | El JSON no cumple `CrearParcelaRequest.java` (`@NotNull`, `@NotBlank`) |
+
+Body inválido (pegar en DevTools → Console):
+```js
+fetch('http://localhost:8080/api/plots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"codigo":""}' }).then(r => r.json()).then(console.log)
+```
+
+### Respuestas para la defensa oral
+1. **`VITE_API_URL`:** la URL del backend está en un solo lugar. Si cambia el puerto o el servidor, se cambia `.env.development` y no 10 componentes.
+2. **¿Por qué no una contraseña en `VITE_`?** Vite la copia dentro del JavaScript que se descarga en el navegador, y cualquiera puede leerla con F12.
+3. **Origen:** es protocolo + dominio + puerto. `http://localhost:5173` y `http://localhost:8080` son orígenes distintos.
+4. **¿Por qué Postman sí funciona y React no?** CORS lo aplica **el navegador**. Postman y `curl` no son navegadores, así que no lo aplican.
+5. **¿Qué controla CORS?** Solo qué orígenes del navegador pueden leer la respuesta. No autentica ni protege la base de datos.
+6. **¿Qué devuelve `fetch`?** Una `Promise`, que más adelante se resuelve con un `Response`.
+7. **`await`:** pausa la función `async` hasta que la `Promise` termine, sin bloquear la página.
+8. **¿Por qué un 404 no entra al `catch`?** Para `fetch`, el servidor sí respondió. Solo falla si no hay respuesta (red caída, CORS, backend apagado).
+9. **`response.ok`:** es `true` si el status está entre 200 y 299.
+10. **¿Por qué `response.json()` también es asíncrono?** El cuerpo puede seguir llegando por la red y hay que leerlo completo antes de convertirlo.
+11. **¿Para qué `apiClient`?** Para no repetir en cada componente la URL base, el `Content-Type`, la revisión de `ok` y la lectura de errores.
+12. **Responsabilidad de `predioService`:** conocer los endpoints de predios (`/farms`) y qué tipos envían y reciben.
+13. **Modelo vs request:** `Predio` es lo que llega, con `id`. `CrearPredioRequest` es lo que se envía, sin `id`.
+14. **¿Por qué el POST no envía `id`?** Lo genera PostgreSQL (`GENERATED BY DEFAULT AS IDENTITY`).
+15. **`JSON.stringify`:** convierte el objeto de JavaScript en el texto JSON que viaja en el body.
+16. **`Content-Type: application/json`:** se agrega cuando hay body, así Spring sabe que debe leerlo como JSON. Sin él responde **415**.
+17. **`loading` vs `submitting`:** `loading` es la carga inicial de la tabla (GET). `submitting` es el envío del formulario (POST).
+18. **¿Por qué se deshabilita el botón?** Para evitar doble clic: dos POST crearían dos registros, o el segundo daría 409.
+19. **Del clic a PostgreSQL:** `handleSubmit` → validación → `parcelaService.crear` → `apiFetch` → `POST /api/plots` → `ParcelaController` (`@Valid`) → `ParcelaService` (`@Transactional`, verifica predio y código) → `ParcelaPersistenceAdapter` → `SpringDataParcelaRepository.save` → `INSERT` en `agrocontrol.parcela`.
+20. **De PostgreSQL a la pantalla:** PostgreSQL devuelve el `id` → entidad → dominio → `ParcelaResponse` → JSON con **201** → `apiFetch` hace `response.json()` → `onCreated(creada)` → `setParcelas([...prev, creada])` → React vuelve a dibujar la tabla.
+21. **¿Por qué usar el objeto devuelto?** El `id` real lo da la base de datos. Si React inventara uno, no coincidiría con PostgreSQL.
+22. **Evidencia ante un 400:** en Network → Payload, comparar el JSON enviado con `CrearParcelaRequest.java`. En Response, mirar `fieldErrors`.
+23. **Evidencia ante un 404:** la Request URL. Comparar la ruta con el `@RequestMapping`, o revisar si el `predioId` existe.
+24. **Evidencia ante un 500:** la consola de IntelliJ del backend (el log de `GlobalExceptionHandler`). React solo recibe un mensaje genérico.
+25. **CORS vs error JPA:** CORS no tiene status en Network ("CORS error") y el backend no muestra excepción. Un error JPA llega como 409 o 500, con log en IntelliJ.
+26. **`AbortController`:** cancela el GET si el componente se desmonta (cambio de página), así no se actualiza el estado de un componente que ya no existe.
+27. **POST dentro de un Effect:** se ejecutaría solo al montar (y dos veces con `StrictMode`), creando registros duplicados sin que el usuario lo pida.
+28. **Relación 1:N al crear una parcela:** el `<select>` elige un predio y se envía `predioId`. El backend la valida y PostgreSQL la guarda en la FK `predio_id`.
+29. **¿Si el backend esperara `predio: { id: 1 }`?** Se cambiaría solo el payload y `CrearParcelaRequest.ts`. El contrato lo define el backend.
+30. **Flujo completo:** formulario → `parcelaService.crear` → `apiFetch` → `POST /api/plots` → `ParcelaController` → `ParcelaService` → `ParcelaRepositoryPort` / Adapter → Spring Data JPA → PostgreSQL → `ParcelaResponse` en JSON (201) → `apiFetch` → `onCreated` → `setParcelas` → la tabla muestra la fila nueva.
+
 ## Guía 04 - Formularios controlados con React + TypeScript
 
 Las páginas de Predios y Parcelas tienen un botón **"+ Nuevo predio"** / **"+ Nueva parcela"** que muestra un formulario. Al guardar, el formulario **valida** los datos y arma el **payload**, el objeto listo para enviar al backend, que por ahora solo se muestra en la consola. Todavía **no** se llama a la API.

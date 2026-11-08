@@ -64,6 +64,12 @@ public class ParcelaService implements RegistrarParcelaUseCase, ConsultarParcela
 
     @Override
     @Transactional(readOnly = true)
+    public List<Parcela> listar() {
+        return repositoryPort.listarTodas();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<Parcela> listarPorPredio(Long predioId) {
         verificarPredio(predioId);
         return repositoryPort.listarPorPredioId(predioId);

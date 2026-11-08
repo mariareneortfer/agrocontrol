@@ -10,6 +10,9 @@ public interface ConsultarParcelaUseCase {
 
     Optional<Parcela> buscarPorId(Long id);
 
+    /** Todas las parcelas, ordenadas por id (listado general del frontend). */
+    List<Parcela> listar();
+
     /** Todas las parcelas de un predio (la relacion 1:N vista desde el padre). */
     List<Parcela> listarPorPredio(Long predioId);
 }

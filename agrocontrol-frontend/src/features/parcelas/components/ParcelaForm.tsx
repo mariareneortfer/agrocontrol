@@ -1,8 +1,17 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
-import { prediosMock } from '../../predios/data/predios.mock'
+import { ApiError, mensajeDeError } from '../../../services/http/apiClient'
+import type { Predio } from '../../predios/models/Predio'
+import type { Parcela } from '../models/Parcela'
+import { parcelaService } from '../services/parcelaService'
 import type { CrearParcelaRequest } from '../types/CrearParcelaRequest'
 import type { ParcelaFormData } from '../types/ParcelaFormData'
 import { validarParcela, type ParcelaFormErrors } from '../utils/parcelaValidation'
+
+interface ParcelaFormProps {
+  // Predios REALES (cargados por la pagina con GET /api/farms) para el select.
+  predios: Predio[]
+  onCreated?: (parcela: Parcela) => void
+}
 
 const initialParcelaForm: ParcelaFormData = {
   predioId: '',
@@ -14,16 +23,16 @@ const initialParcelaForm: ParcelaFormData = {
   mantenerPredio: false,
 }
 
-// El select muestra los predios ordenados por nombre; guarda el id, no el nombre.
-const prediosOrdenados = [...prediosMock].sort((a, b) => a.nombre.localeCompare(b.nombre))
-
-export default function ParcelaForm() {
+export default function ParcelaForm({ predios, onCreated }: ParcelaFormProps) {
   const [formData, setFormData] = useState<ParcelaFormData>(initialParcelaForm)
   const [errors, setErrors] = useState<ParcelaFormErrors>({})
   const [mensaje, setMensaje] = useState('')
+  const [apiError, setApiError] = useState('')
   const [enviando, setEnviando] = useState(false)
 
   const totalErrores = Object.keys(errors).length
+  // El select muestra los predios ordenados por nombre; guarda el id, no el nombre.
+  const prediosOrdenados = [...predios].sort((a, b) => a.nombre.localeCompare(b.nombre))
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -36,11 +45,13 @@ export default function ParcelaForm() {
     setFormData(initialParcelaForm)
     setErrors({})
     setMensaje('')
+    setApiError('')
   }
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setMensaje('')
+    setApiError('')
 
     const validationErrors = validarParcela(formData)
     setErrors(validationErrors)
@@ -57,19 +68,27 @@ export default function ParcelaForm() {
       ubicacionReferencial: ubicacion ? ubicacion : null,
     }
 
-    // Envio simulado de 500 ms: en la Guia 05 aqui ira la llamada real a POST /api/plots.
-    setEnviando(true)
-    setTimeout(() => {
-      console.log('Parcela lista para API:', parcelaPayload)
-      setEnviando(false)
-      setMensaje('Datos válidos. Parcela lista para enviarse al backend.')
+    try {
+      setEnviando(true)
+      // POST /api/plots: la relacion 1:N viaja como predioId; el backend verifica
+      // que el predio exista (404) y que el codigo no se repita en ese predio (409).
+      const creada = await parcelaService.crear(parcelaPayload)
+      onCreated?.(creada)
+      setMensaje(`Parcela ${creada.codigo} creada correctamente (id ${creada.id}).`)
       // Si se marco la casilla, se limpia todo menos el predio, para cargar otra parcela seguida.
       setFormData((prev) =>
         prev.mantenerPredio
           ? { ...initialParcelaForm, predioId: prev.predioId, mantenerPredio: true }
           : initialParcelaForm,
       )
-    }, 500)
+    } catch (err) {
+      if (err instanceof ApiError && Object.keys(err.fieldErrors).length > 0) {
+        setErrors(err.fieldErrors)
+      }
+      setApiError(mensajeDeError(err))
+    } finally {
+      setEnviando(false)
+    }
   }
 
   return (
@@ -151,6 +170,7 @@ export default function ParcelaForm() {
           El formulario tiene {totalErrores} {totalErrores === 1 ? 'error' : 'errores'}.
         </div>
       )}
+      {apiError && <div className="form-error">{apiError}</div>}
       {mensaje && <div className="form-success">{mensaje}</div>}
 
       <div className="form-actions">

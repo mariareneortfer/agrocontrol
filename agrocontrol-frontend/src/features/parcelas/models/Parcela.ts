@@ -1,5 +1,5 @@
-// Datos de una parcela tal como los devuelve el backend (GET /api/plots).
-// predioId es la referencia al predio dueño (relacion 1:N: un predio tiene muchas parcelas).
+// Modelo del frontend para una parcela (contrato de ParcelaResponse en GET /api/plots).
+// predioId representa la relacion 1:N: muchas parcelas pueden apuntar al mismo predio.
 export interface Parcela {
   id: number
   predioId: number

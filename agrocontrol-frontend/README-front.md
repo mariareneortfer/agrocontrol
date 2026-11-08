@@ -3,6 +3,101 @@
 Frontend de **AgroControl** (proyecto 16) con **React + TypeScript + Vite**, creado y ejecutado desde **WebStorm**.
 Consumirá más adelante la API REST del backend Spring Boot (`agrocontrol-backend`, puerto 8080).
 
+## Guía 03 - Modelos TypeScript, datos simulados y tablas
+
+Las páginas `/predios` y `/parcelas` ya muestran **tablas con datos simulados (mocks)** y tarjetas de estadísticas. Todavía **no** se llama al backend.
+
+### Equivalencias con el ejemplo del profesor
+| Profesor (ParkFlow360) | AgroControl |
+|---|---|
+| `clientes/models/Cliente.ts` | `predios/models/Predio.ts` |
+| `vehiculos/models/Vehiculo.ts` | `parcelas/models/Parcela.ts` |
+| `clientes.mock.ts` / `vehiculos.mock.ts` | `predios.mock.ts` / `parcelas.mock.ts` |
+| `ClienteTable` / `VehiculoTable` | `PredioTable` / `ParcelaTable` |
+| `Vehiculo.clienteId` (1:N) | `Parcela.predioId` (1:N) |
+| `find()`: nombre del cliente | `find()`: nombre del predio |
+| Placa resaltada | Código de parcela resaltado |
+| Estado Activo / Inactivo (`activo: boolean`) | Ver la nota siguiente |
+
+### Decisión: ¿por qué no hay campo `activo`?
+La guía pide alinear los modelos con el **contrato real** de la API. En AgroControl, las tablas `predio` y `parcela` **no tienen** una columna `activo`, y `PredioResponse` y `ParcelaResponse` tampoco la devuelven. Si se inventara `activo` solo en el frontend, al conectar la API ese campo llegaría como `undefined`.
+
+Por eso, el estado visual se calcula con datos que sí existen:
+- **Predios:** badge verde **"Con parcelas"** o rojo **"Sin parcelas"**. Se calcula contando las parcelas del predio con `filter()`, usando la relación 1:N.
+- **Parcelas:** si `ubicacionReferencial` es `null`, se muestra un badge rojo **"Sin ubicación"**.
+- Las tarjetas de estadísticas usan `filter()` igual que "Activos / Inactivos": Con parcelas / Sin parcelas y Con ubicación / Sin ubicación.
+
+### Modelos (alineados con el contrato de la API, no con la entidad JPA)
+```ts
+export interface Predio {
+  id: number
+  nombre: string
+  ubicacion: string | null
+  descripcion: string | null
+}
+
+export interface Parcela {
+  id: number
+  predioId: number            // relación 1:N con Predio
+  codigo: string
+  nombre: string
+  superficie: number
+  unidadSuperficie: string
+  ubicacionReferencial: string | null
+}
+```
+`string | null` indica que el dato es opcional en la base de datos (columnas sin `NOT NULL`).
+
+La carpeta `types/` de cada feature (Guía 01) queda reservada para los tipos de formularios y requests (por ejemplo `CrearPredioRequest`, Guía 04). `models/` contiene lo que la API devuelve.
+
+### Flujo de datos
+```text
+predios.mock.ts      → exporta Predio[]
+PrediosPage.tsx      → calcula estadísticas con filter() y pasa predios={prediosMock} parcelas={parcelasMock}
+PredioTable.tsx      → recibe Predio[] y Parcela[] por props
+predios.map(...)     → cada Predio se convierte en un <tr key={predio.id}>
+JSX → React actualiza el DOM → el navegador muestra la tabla
+```
+Para Parcelas el flujo es el mismo. La diferencia es que `ParcelaTable` usa `find()` sobre los predios para mostrar el **nombre** del predio en lugar del número `predioId`.
+
+### Práctica obligatoria
+1. **Dos predios nuevos:** uno con parcelas y otro sin parcelas (en AgroControl esto equivale a activo/inactivo).
+2. **Tres parcelas nuevas** asociadas a predios existentes con `predioId`.
+3. **Parcela con `predioId: 999`:** en la columna Predio aparece **"Sin predio asociado"**.
+4. **Tipo incorrecto:** `superficie: '12.5'` (texto) en vez de `12.5`. WebStorm subraya en rojo y `npm run build` falla con `Type 'string' is not assignable to type 'number'`. Después se corrigió.
+5. **Arreglo vacío:** `prediosMock = []` muestra "No hay predios registrados." y las estadísticas en 0. Después se restauró.
+6. **Cambiar un código** (por ejemplo `P-02` → `P-02A`): solo cambia esa fila, porque React identifica cada fila por su `key` (`parcela.id`).
+7. **`npm run build`** sin errores.
+
+> Nota de seguridad: PostgreSQL no permitiría `predioId: 999`, porque `fk_parcela_predio` lo rechaza (el backend responde 404). En los mocks sí es posible porque son datos locales, y por eso la tabla muestra "Sin predio asociado".
+
+### Respuestas para la defensa oral
+1. **Entidad JPA vs interface TS:** la entidad vive en el backend y describe cómo se guarda en PostgreSQL (`@Entity`, `@Table`, `@ManyToOne`). La interface solo describe la forma del JSON que usa React.
+2. **`Predio[]`:** dice que el arreglo solo puede tener objetos con forma de Predio. Evita, por ejemplo, meter un número o un objeto sin `nombre`.
+3. **Mock separado de la página:** así, cuando usemos la API, solo se cambia el origen de datos y no la página ni la tabla.
+4. **`import type`:** importa solo el tipo, que se usa para revisar el código. No genera código en el navegador.
+5. **Props de `PredioTable`:** `predios: Predio[]` y `parcelas: Parcela[]`.
+6. **Si envío un string:** TypeScript marca el error antes de ejecutar y `npm run build` falla.
+7. **`map()`:** transforma cada objeto del arreglo en una fila `<tr>`.
+8. **¿Por qué `key`?** React la usa para saber qué fila es cuál y actualizar solo la que cambió.
+9. **¿Por qué el `id` y no el índice?** El índice cambia si agrego, quito u ordeno elementos. El `id` es siempre el mismo para el mismo predio.
+10. **¿`predio.key` dentro del componente?** No. `key` es para React y no llega como prop.
+11. **Retorno temprano:** si el arreglo está vacío, muestra un mensaje en vez de una tabla vacía.
+12. **`filter()`:** deja solo los elementos que cumplen una condición, por ejemplo los predios que tienen parcelas, y con `.length` se cuentan.
+13. **Relación 1:N en los mocks:** cada parcela tiene `predioId`. Varias parcelas pueden tener el mismo `predioId`.
+14. **¿Por qué se repite el mismo `predioId`?** Porque un predio puede tener muchas parcelas; San Isidro tiene P-01 y P-02.
+15. **`find()`:** busca el predio cuyo `id` es igual al `predioId` de la parcela.
+16. **Si `find()` no encuentra:** devuelve `undefined` y la tabla muestra "Sin predio asociado".
+17. **¿Por qué `ParcelaTable` recibe dos arreglos?** Necesita los predios para traducir `predioId` a un nombre.
+18. **Página vs tabla:** la página elige los datos y calcula estadísticas. La tabla solo los muestra.
+19. **Problema de `any`:** desactiva la revisión de TypeScript; los errores aparecen recién en el navegador.
+20. **¿La interface existe en runtime?** No. Ni en PostgreSQL ni en el navegador: se borra al compilar y solo existe mientras programo.
+21. **Chequeo estático:** TypeScript revisa los tipos leyendo el código, sin ejecutarlo.
+22. **¿Cómo cambia al integrar el backend?** La página pedirá los datos a un servicio HTTP (`GET /api/farms`, `GET /api/plots`) en lugar de importar los mocks. La tabla queda igual.
+23. **Archivo que deja de ser el origen:** `predios.mock.ts` y `parcelas.mock.ts`.
+24. **`table-responsive`:** permite desplazar la tabla de lado a lado en pantallas angostas sin romper el layout.
+25. **Flujo completo:** `prediosMock` → `PrediosPage` lo pasa por la prop `predios` → `PredioTable` hace `predios.map()` → cada predio se convierte en un `<tr>` en JSX → React actualiza el DOM → el navegador muestra la fila.
+
 ## Guía 02 - Navegación, layout principal y menú
 
 Se instaló **React Router** (`npm install react-router`) y se armó un layout administrativo: menú lateral, cabecera y una zona central que cambia según la URL.

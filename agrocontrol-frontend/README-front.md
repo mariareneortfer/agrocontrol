@@ -3,6 +3,103 @@
 Frontend de **AgroControl** (proyecto 16) con **React + TypeScript + Vite**, creado y ejecutado desde **WebStorm**.
 Consumirá más adelante la API REST del backend Spring Boot (`agrocontrol-backend`, puerto 8080).
 
+## Guía 04 - Formularios controlados con React + TypeScript
+
+Las páginas de Predios y Parcelas tienen un botón **"+ Nuevo predio"** / **"+ Nueva parcela"** que muestra un formulario. Al guardar, el formulario **valida** los datos y arma el **payload**, el objeto listo para enviar al backend, que por ahora solo se muestra en la consola. Todavía **no** se llama a la API.
+
+### Equivalencias con el ejemplo del profesor
+| Profesor (ParkFlow360) | AgroControl |
+|---|---|
+| `ClienteFormData` / `VehiculoFormData` | `PredioFormData` / `ParcelaFormData` (en `types/`) |
+| `validarCliente` / `validarVehiculo` (en `utils/`) | `validarPredio` / `validarParcela` (en `utils/`) |
+| `ClienteForm` / `VehiculoForm` | `PredioForm` / `ParcelaForm` |
+| `anio: string` → `Number()` al validar | `superficie: string` → `Number()` al validar |
+| `<select>` de `clienteId` | `<select>` de `predioId`, que muestra el nombre y guarda el id |
+| `clientePayload` / `vehiculoPayload` sin tipo | Tipados como `CrearPredioRequest` / `CrearParcelaRequest` |
+| Checkbox `activo` | Checkbox de opciones de pantalla (ver la nota) |
+
+### Tres tipos para la misma entidad
+| Tipo | Archivo | Para qué sirve |
+|---|---|---|
+| Modelo | `models/Parcela.ts` | Lo que la API **devuelve**: tiene `id` y `superficie: number` |
+| Datos del formulario | `types/ParcelaFormData.ts` | Lo que el usuario **está escribiendo**: todo es texto (`superficie: string`, `predioId: string`) |
+| Payload | `types/CrearParcelaRequest.ts` | Lo que se **enviará** a `POST /api/plots`: sin `id`, ya convertido a `number`, igual que `CrearParcelaRequest.java` |
+
+Tipar el payload hace que TypeScript avise si olvido convertir: `superficie: formData.superficie` da el error `Type 'string' is not assignable to type 'number'`.
+
+### Nota: el checkbox
+El profesor usa el checkbox `activo`, pero en AgroControl **no existe la columna `activo`** (ver la Guía 03). Para practicar `checked` igual, cada formulario tiene un checkbox que es **una opción de la pantalla** y **no se envía** en el payload:
+- **Predio:** "Limpiar el formulario después de guardar" (`limpiarAlGuardar`, marcado por defecto).
+- **Parcela:** "Mantener el predio seleccionado para registrar otra parcela" (`mantenerPredio`). Después de guardar, se limpia todo **menos** el predio elegido, para cargar varias parcelas del mismo predio seguidas.
+
+Esto también muestra la diferencia entre **datos del formulario** y **payload**: `ParcelaFormData` tiene `mantenerPredio`, pero `CrearParcelaRequest` no.
+
+### Validaciones (las mismas reglas que el backend)
+| Campo | Regla en el frontend | De dónde sale |
+|---|---|---|
+| Predio: nombre | Obligatorio, de 3 a 100 caracteres | `@NotBlank @Size(max=100)` + regla propia de 3 caracteres (práctica) |
+| Predio: ubicación | Hasta 200 caracteres | `@Size(max=200)` |
+| Predio: descripción | Hasta 1000 caracteres | `@Size(max=1000)` |
+| Parcela: predio | Obligatorio | `@NotNull predioId` |
+| Parcela: código | Obligatorio, hasta 20 caracteres | `@NotBlank @Size(max=20)` |
+| Parcela: nombre | Obligatorio, hasta 100 caracteres | `@NotBlank @Size(max=100)` |
+| Parcela: superficie | Obligatoria, número > 0 con hasta 8 enteros y 2 decimales | `@Positive @Digits(8,2)` + `ck_parcela_superficie_positiva` |
+| Parcela: unidad | Obligatoria | `@NotBlank unidadSuperficie` |
+| Parcela: ubicación referencial | Hasta 200 caracteres | `@Size(max=200)` |
+
+### Práctica evaluada (cómo se adaptó)
+| Práctica del profesor | En AgroControl |
+|---|---|
+| Campo Dirección obligatorio en Cliente | No hay dirección. La ubicación del predio es **opcional en la base de datos** (El Porvenir no tiene). El campo nuevo obligatorio es la **unidad de superficie** de la parcela (`unidad_superficie NOT NULL`), un select que viene con "Hectárea" elegida por defecto. Si se cambia a "Seleccione una unidad", aparece el error. |
+| Documento con al menos 5 caracteres | **Nombre del predio con al menos 3 caracteres** |
+| Placa a mayúsculas en el payload | **Código de parcela a mayúsculas**: se escribe `p-07` y el payload lleva `P-07`. El backend también lo normaliza (`Parcela.normalizarCodigo`). |
+| Solo clientes activos en el select | No hay campo `activo`. El select muestra **todos los predios ordenados por nombre** (`sort` + `localeCompare`). |
+| Botón Limpiar en Vehículo | Botón **Limpiar** en los dos formularios |
+| Botón Guardar deshabilitado 500 ms (reto) | Estado `enviando`: el botón dice **"Guardando..."** y queda deshabilitado durante 500 ms (`setTimeout`) |
+| Contador de errores | Mensaje rojo **"El formulario tiene N errores."** |
+| ¿Por qué el frontend no reemplaza al backend? | Ver el texto siguiente |
+
+**¿Por qué la validación del frontend NO reemplaza a la del backend?**
+El código del frontend corre en el navegador del usuario. Cualquiera puede saltarse el formulario y enviar un JSON directo a la API con `curl` o Postman, como hicimos en el Capítulo 08. Además, hay reglas que el frontend no puede verificar solo: si el código `P-01` ya existe en ese predio (409) o si el predio todavía existe (404). Eso lo saben el backend y PostgreSQL (`uq_parcela_predio_codigo`, `fk_parcela_predio`). La validación del frontend sirve para dar **respuesta rápida al usuario**; la del backend es la que **protege los datos**.
+
+### Pruebas manuales
+1. **Predio vacío:** "Guardar predio" muestra "El nombre del predio es obligatorio." y "El formulario tiene 1 error."
+2. **Nombre "AB":** "El nombre debe tener al menos 3 caracteres."
+3. **Predio válido:** el botón dice "Guardando..." medio segundo, luego aparece el mensaje verde y la consola muestra `Predio listo para API: {nombre: 'Los Algarrobos', ubicacion: '...', descripcion: null}`.
+4. **Parcela vacía:** con la unidad en "Seleccione una unidad" aparecen 5 errores.
+5. **Superficie `3.456`:** "Use un número con hasta 2 decimales."
+6. **Superficie `0`:** "La superficie debe ser mayor que cero."
+7. **Parcela válida con código `p-07`:** la consola muestra `codigo: 'P-07'`, `predioId: 2` y `superficie: 7.5`, todos `number` salvo el código.
+8. **"Mantener el predio" marcado:** después de guardar, el predio sigue elegido y los demás campos se vacían.
+9. **Pantalla angosta (menos de 720 px):** el formulario pasa a una sola columna.
+
+### Respuestas para la defensa oral
+1. **Input controlado:** su valor sale del estado de React (`value={formData.nombre}`) y solo cambia con `onChange`.
+2. **Fuente de verdad:** el estado `formData`, no el DOM.
+3. **`useState`:** guarda lo que el usuario escribe, los errores, el mensaje y si se está enviando. Cada cambio vuelve a dibujar la pantalla.
+4. **¿Por qué no `formData.nombre = 'Juan'`?** Eso cambia el objeto sin avisar a React, así que no vuelve a dibujar. Hay que usar `setFormData` con un objeto nuevo.
+5. **`...prev`:** copia todos los campos anteriores al objeto nuevo y solo se reemplaza el que cambió.
+6. **Atributo `name`:** indica qué campo de `formData` se actualiza. Por eso tiene que llamarse igual que la propiedad (`name="superficie"`).
+7. **`[name]`:** es una propiedad calculada. Si `name` vale `"codigo"`, `{ [name]: valor }` es `{ codigo: valor }`.
+8. **`value` vs `checked`:** `value` es el texto del input. `checked` es `true` o `false` en un checkbox.
+9. **Tipo del evento del input:** `ChangeEvent<HTMLInputElement | HTMLSelectElement>`, y en Predio también `HTMLTextAreaElement`.
+10. **Tipo del submit:** `FormEvent<HTMLFormElement>`.
+11. **`preventDefault()`:** evita que el navegador recargue la página al enviar el form; así no se pierde el estado de la SPA.
+12. **`value` sin `onChange`:** el input queda de solo lectura. El usuario escribe pero no cambia nada, y React avisa en la consola.
+13. **¿Por qué `superficie` es string mientras se escribe?** El input la entrega como texto. Si se convirtiera en cada tecla, `"12."` se transformaría en `12` y el usuario no podría escribir decimales.
+14. **¿Cuándo se convierte a number?** En `handleSubmit`, **después** de que `validarParcela` no encontró errores.
+15. **Riesgo de `Number()` sin validar:** `Number('abc')` da `NaN` y `Number('')` da `0`; se enviaría un dato inválido al backend.
+16. **Relación 1:N en el select:** cada parcela elige **un** predio, y muchas parcelas pueden elegir el mismo.
+17. **¿Por qué el option muestra el nombre y usa el id?** El usuario reconoce "San Isidro", pero la API necesita `predioId: 1`.
+18. **`Object.keys(errors).length > 0`:** cuenta cuántos campos tienen error. Si hay alguno, no se arma el payload.
+19. **¿Por qué los errores son estado?** Porque deben aparecer y desaparecer en pantalla, y para eso React tiene que volver a dibujar.
+20. **Ventaja de un solo `formData`:** un solo `handleChange` sirve para todos los campos, y limpiar el formulario es una sola línea.
+21. **Desventaja de un `handleChange` genérico:** si un `name` está mal escrito, TypeScript no lo detecta y se crea una propiedad que no existe. Además, todos los campos se tratan igual.
+22. **Frontend vs Spring Boot:** ver el texto de la práctica evaluada.
+23. **Modelo vs tipo de formulario:** el modelo (`Parcela`) describe datos ya válidos que vienen de la API. `ParcelaFormData` describe lo que se está escribiendo, aunque todavía esté incompleto o mal.
+24. **Payload:** es el objeto que se enviará a la API. Aquí es un `CrearParcelaRequest`: sin `id`, con textos limpios, código en mayúsculas y números convertidos.
+25. **Recorrido completo:** escribo una letra → el input dispara `onChange` → `handleChange` lee `name` y `value` → `setFormData` crea un objeto nuevo → React vuelve a dibujar y el input muestra la letra. Al presionar Guardar → `onSubmit` → `preventDefault()` → `validarParcela` → si no hay errores, se arma `parcelaPayload` con `Number()`, `trim()` y `toUpperCase()` → `console.log` (en la Guía 05 será `POST /api/plots`).
+
 ## Guía 03 - Modelos TypeScript, datos simulados y tablas
 
 Las páginas `/predios` y `/parcelas` ya muestran **tablas con datos simulados (mocks)** y tarjetas de estadísticas. Todavía **no** se llama al backend.

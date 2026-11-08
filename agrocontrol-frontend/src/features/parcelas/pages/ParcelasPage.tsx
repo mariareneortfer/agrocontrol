@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import { prediosMock } from '../../predios/data/predios.mock'
+import ParcelaForm from '../components/ParcelaForm'
 import ParcelaTable from '../components/ParcelaTable'
 import { parcelasMock } from '../data/parcelas.mock'
 
 export default function ParcelasPage() {
+  const [mostrarFormulario, setMostrarFormulario] = useState(false)
+
   const total = parcelasMock.length
   const conUbicacion = parcelasMock.filter((parcela) => parcela.ubicacionReferencial !== null).length
 
@@ -14,7 +18,16 @@ export default function ParcelasPage() {
           <h2>Parcelas</h2>
           <p>Parcelas asociadas a predios mediante predioId.</p>
         </div>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => setMostrarFormulario((prev) => !prev)}
+        >
+          {mostrarFormulario ? 'Cerrar formulario' : '+ Nueva parcela'}
+        </button>
       </div>
+
+      {mostrarFormulario && <ParcelaForm />}
 
       <div className="stats-grid">
         <article className="stat-card"><span>Total</span><strong>{total}</strong></article>

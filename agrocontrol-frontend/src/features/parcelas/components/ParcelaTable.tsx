@@ -3,19 +3,29 @@ import type { Parcela } from '../models/Parcela'
 
 interface ParcelaTableProps {
   parcelas: Parcela[]
+  // Los predios ya cargados por la pagina: la tabla NO hace un GET por cada fila.
   predios: Predio[]
+  onEdit: (id: number) => void
+  onDelete: (parcela: Parcela) => void
+  editingId?: number | null
+  deletingId?: number | null
+  accionesBloqueadas?: boolean
 }
 
-// Tabla de parcelas. Recibe dos arreglos: las parcelas a mostrar y los predios,
-// para convertir predioId (un numero) en el nombre del predio con find().
-export default function ParcelaTable({ parcelas, predios }: ParcelaTableProps) {
-  const obtenerNombrePredio = (predioId: number) => {
-    const predio = predios.find((item) => item.id === predioId)
-    return predio ? predio.nombre : 'Sin predio asociado'
-  }
+export default function ParcelaTable({
+  parcelas,
+  predios,
+  onEdit,
+  onDelete,
+  editingId,
+  deletingId,
+  accionesBloqueadas = false,
+}: ParcelaTableProps) {
+  // Map id -> Predio: buscar el nombre del predio de cada fila es directo, sin recorrer el arreglo.
+  const predioPorId = new Map(predios.map((predio) => [predio.id, predio]))
 
   if (parcelas.length === 0) {
-    return <div className="empty-state">No hay parcelas registradas.</div>
+    return <div className="empty-state">No hay parcelas para mostrar.</div>
   }
 
   return (
@@ -29,22 +39,46 @@ export default function ParcelaTable({ parcelas, predios }: ParcelaTableProps) {
               <th>Superficie</th>
               <th>Predio</th>
               <th>Ubicación referencial</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {parcelas.map((parcela) => (
-              <tr key={parcela.id}>
-                <td className="code-cell">{parcela.codigo}</td>
-                <td>{parcela.nombre}</td>
-                <td>{parcela.superficie.toFixed(2)} {parcela.unidadSuperficie}</td>
-                <td>{obtenerNombrePredio(parcela.predioId)}</td>
-                <td>
-                  {parcela.ubicacionReferencial ?? (
-                    <span className="status-badge status-inactive">Sin ubicación</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {parcelas.map((parcela) => {
+              const predio = predioPorId.get(parcela.predioId)
+              return (
+                <tr key={parcela.id} className={editingId === parcela.id ? 'row-editing' : undefined}>
+                  <td className="code-cell">{parcela.codigo}</td>
+                  <td>{parcela.nombre}</td>
+                  <td>{parcela.superficie.toFixed(2)} {parcela.unidadSuperficie}</td>
+                  <td>{predio ? predio.nombre : `Sin predio asociado (#${parcela.predioId})`}</td>
+                  <td>
+                    {parcela.ubicacionReferencial ?? (
+                      <span className="status-badge status-inactive">Sin ubicación</span>
+                    )}
+                  </td>
+                  <td>
+                    <div className="actions-cell">
+                      <button
+                        type="button"
+                        className="btn-small"
+                        onClick={() => onEdit(parcela.id)}
+                        disabled={accionesBloqueadas}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-small btn-danger"
+                        onClick={() => onDelete(parcela)}
+                        disabled={accionesBloqueadas}
+                      >
+                        {deletingId === parcela.id ? 'Eliminando...' : 'Eliminar'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

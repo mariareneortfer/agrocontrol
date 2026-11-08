@@ -1,3 +1,4 @@
+import type { Predio } from '../../predios/models/Predio'
 import type { ParcelaFormData } from '../types/ParcelaFormData'
 
 export type ParcelaFormErrors = Partial<Record<keyof ParcelaFormData, string>>
@@ -5,13 +6,19 @@ export type ParcelaFormErrors = Partial<Record<keyof ParcelaFormData, string>>
 // Hasta 8 enteros y 2 decimales, como NUMERIC(10,2) y @Digits(integer = 8, fraction = 2).
 const FORMATO_SUPERFICIE = /^\d{1,8}(\.\d{1,2})?$/
 
-// Reglas copiadas de CrearParcelaRequest.java y de la tabla parcela.
-export function validarParcela(data: ParcelaFormData): ParcelaFormErrors {
+// Reglas copiadas de CrearParcelaRequest.java / ActualizarParcelaRequest.java.
+// Ademas revisa que el predio elegido exista en la lista cargada (referencia padre valida).
+export function validarParcela(data: ParcelaFormData, predios: Predio[]): ParcelaFormErrors {
   const errors: ParcelaFormErrors = {}
   const codigo = data.codigo.trim()
   const superficieTexto = data.superficie.trim()
 
-  if (!data.predioId) errors.predioId = 'Debe seleccionar un predio.'
+  const predioId = Number(data.predioId)
+  if (!data.predioId) {
+    errors.predioId = 'Debe seleccionar un predio.'
+  } else if (!predios.some((predio) => predio.id === predioId)) {
+    errors.predioId = 'El predio seleccionado no es válido.'
+  }
 
   if (!codigo) {
     errors.codigo = 'El código es obligatorio.'

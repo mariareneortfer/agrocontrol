@@ -4,6 +4,8 @@ import com.agrocontrol.farm.domain.exception.PredioConParcelasException;
 import com.agrocontrol.farm.domain.exception.PredioDuplicadoException;
 import com.agrocontrol.farm.domain.exception.PredioNoEncontradoException;
 import com.agrocontrol.plot.domain.exception.CodigoParcelaDuplicadoException;
+import com.agrocontrol.plot.domain.exception.ParcelaEnUsoException;
+import com.agrocontrol.plot.domain.exception.ParcelaNoEncontradaException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +43,12 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), request, Map.of());
     }
 
+    @ExceptionHandler(ParcelaNoEncontradaException.class)
+    public ResponseEntity<ApiError> handleParcelaNoEncontrada(ParcelaNoEncontradaException ex,
+                                                              HttpServletRequest request) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), request, Map.of());
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiError> handleRutaInexistente(NoResourceFoundException ex,
                                                           HttpServletRequest request) {
@@ -58,6 +66,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(PredioConParcelasException.class)
     public ResponseEntity<ApiError> handlePredioConParcelas(PredioConParcelasException ex,
                                                             HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request, Map.of());
+    }
+
+    @ExceptionHandler(ParcelaEnUsoException.class)
+    public ResponseEntity<ApiError> handleParcelaEnUso(ParcelaEnUsoException ex,
+                                                       HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request, Map.of());
     }
 

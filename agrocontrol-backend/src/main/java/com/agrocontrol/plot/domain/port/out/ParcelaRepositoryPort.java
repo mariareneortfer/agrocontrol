@@ -18,4 +18,10 @@ public interface ParcelaRepositoryPort {
 
     /** Apoya la regla UNIQUE (predio_id, codigo): uq_parcela_predio_codigo. */
     boolean existePorPredioIdYCodigo(Long predioId, String codigo);
+
+    /** Para actualizar: el codigo no puede repetirse en OTRA parcela del mismo predio. */
+    boolean existePorPredioIdYCodigoEnOtraParcela(Long predioId, String codigo, Long idExcluido);
+
+    /** Borra la parcela. Si esta en alguna campana, lanza ParcelaEnUsoException. */
+    void eliminar(Parcela parcela);
 }

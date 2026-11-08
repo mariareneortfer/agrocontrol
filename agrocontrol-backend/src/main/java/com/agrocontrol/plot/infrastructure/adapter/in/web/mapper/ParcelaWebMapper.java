@@ -1,7 +1,9 @@
 package com.agrocontrol.plot.infrastructure.adapter.in.web.mapper;
 
 import com.agrocontrol.plot.domain.model.Parcela;
+import com.agrocontrol.plot.domain.port.in.ActualizarParcelaCommand;
 import com.agrocontrol.plot.domain.port.in.RegistrarParcelaCommand;
+import com.agrocontrol.plot.infrastructure.adapter.in.web.dto.ActualizarParcelaRequest;
 import com.agrocontrol.plot.infrastructure.adapter.in.web.dto.CrearParcelaRequest;
 import com.agrocontrol.plot.infrastructure.adapter.in.web.dto.ParcelaResponse;
 
@@ -13,6 +15,11 @@ public final class ParcelaWebMapper {
 
     public static RegistrarParcelaCommand toCommand(CrearParcelaRequest r) {
         return new RegistrarParcelaCommand(r.predioId(), r.codigo(), r.nombre(), r.superficie(),
+                r.unidadSuperficie(), r.ubicacionReferencial());
+    }
+
+    public static ActualizarParcelaCommand toCommand(ActualizarParcelaRequest r) {
+        return new ActualizarParcelaCommand(r.predioId(), r.codigo(), r.nombre(), r.superficie(),
                 r.unidadSuperficie(), r.ubicacionReferencial());
     }
 

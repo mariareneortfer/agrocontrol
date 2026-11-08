@@ -3,6 +3,120 @@
 Frontend de **AgroControl** (proyecto 16) con **React + TypeScript + Vite**, creado y ejecutado desde **WebStorm**.
 Consumirá más adelante la API REST del backend Spring Boot (`agrocontrol-backend`, puerto 8080).
 
+## Guía 07 - CRUD completo de Parcela + relación Predio 1:N
+
+**Parcela** es la entidad **hija**: cada parcela pertenece a **un** predio (`predioId`) y un predio puede tener **muchas** parcelas.
+
+### Equivalencias con el ejemplo del profesor
+| Profesor (ParkFlow360) | AgroControl |
+|---|---|
+| Vehículo (hija) → Cliente (padre) | Parcela (hija) → Predio (padre) |
+| `clienteId` | `predioId` |
+| `vehiculo.cliente_id` → `cliente.id` | `parcela.predio_id` → `predio.predio_id` (`fk_parcela_predio`) |
+| `vehiculoService` (CRUD) | `parcelaService`: `listar`, `obtenerPorId`, `crear`, `actualizar`, `eliminar` |
+| Selector de propietario | Selector de **predio** (`<select name="predioId">` controlado) |
+| Cambiar de propietario | **Mover la parcela a otro predio** (PUT con otro `predioId`) |
+| Filtro por cliente | **Filtro por predio** (local) |
+| Placa duplicada → 409 | Código repetido **en el mismo predio** → 409 (`uq_parcela_predio_codigo`) |
+| `anio: string` → `Number()` | `superficie: string` → `Number()` |
+| Solo clientes **activos** en el selector | **Todos** los predios (no existe `activo`), ordenados por nombre |
+
+### Endpoints nuevos en el backend
+`PUT /api/plots/{id}` y `DELETE /api/plots/{id}`. Detalle en el `README.md` del backend.
+
+### Cómo se representa la relación en cada capa
+| Capa | Representación |
+|---|---|
+| PostgreSQL | Columna `parcela.predio_id` + `fk_parcela_predio` → `predio(predio_id)` |
+| JPA | `ParcelaJpaEntity` con `@ManyToOne(fetch = LAZY)` + `@JoinColumn(name = "predio_id")` |
+| Dominio / JSON | `predioId: Long` / `"predioId": 1` |
+| React | `<select>` con `value={formData.predioId}` ("1" como texto). La tabla muestra el **nombre** con un `Map` |
+
+`predioId` **no es** lo mismo que `@ManyToOne`: es solo el número que viaja en el JSON. El objeto `@ManyToOne` vive en la entidad JPA, y la FK real vive en PostgreSQL.
+
+### Qué se agregó en el frontend
+- **`ParcelaForm`** crea y edita, con la misma técnica de `key` que en la Guía 06. Al editar, el select viene con el predio actual. Si se elige otro, aparece el aviso amarillo *"Al actualizar, la parcela se moverá a este predio."*
+- **`validarParcela(data, predios)`** revisa que se haya elegido un predio y que ese predio **exista** en la lista cargada.
+- **`ParcelaTable`** arma un `Map(id → Predio)` con los predios que ya cargó la página. **No hace ningún GET por fila** (evita el problema N+1).
+- **`ParcelasPage`** tiene:
+  - carga en paralelo con `Promise.all`;
+  - filtro local por predio (`Number(predioFiltro)`);
+  - editar con GET/{id};
+  - aviso *"Parcela P-02 movida de San Isidro a La Esperanza"*;
+  - DELETE con confirmación;
+  - errores sin borrar filas.
+
+### Flujos
+| Acción | Flujo |
+|---|---|
+| **Crear** | Formulario → `validarParcela` (el predio existe) → `POST /api/plots` → Service (predio existe → 404; código → 409) → `INSERT` con `predio_id` → 201 → `[...prev, creada]` |
+| **Mover de predio** | Editar → `GET /api/plots/{id}` → el select viene con "1" → elegir La Esperanza ("2") → Actualizar → `PUT` con `predioId: 2` → `UPDATE parcela SET predio_id = 2` → 200 → `map()` reemplaza la fila → la columna Predio dice "La Esperanza" |
+| **Mostrar el predio** | `parcelas` + `predios` → `Map` por id → `predioPorId.get(parcela.predioId).nombre` |
+| **Filtrar** | `predioFiltro` ("1") → `Number` → `filter(p => p.predioId === 1)` → React vuelve a dibujar, sin backend |
+| **Eliminar** | Confirmar → `DELETE /api/plots/{id}` → 204 → `filter()`. Si responde 409, la fila queda |
+
+### Filtro local vs endpoint del backend
+| Estrategia | AgroControl |
+|---|---|
+| Filtro en React (el que se usa) | Las parcelas ya están cargadas: filtra en memoria, sin peticiones |
+| Endpoint del backend | Ya existe `GET /api/plots/farm/{predioId}` y **no se inventó** `?predioId=`. Convendría con miles de parcelas o con paginación |
+
+### Práctica evaluada
+| Práctica | Evidencia |
+|---|---|
+| CRUD completo de la hija | `parcelaService` + botones Editar / Eliminar |
+| Selector controlado del padre | `<select name="predioId" value=... onChange=...>` con los predios del GET |
+| Impedir un padre vacío o inválido | `validarParcela`: "Debe seleccionar un predio" / "El predio seleccionado no es válido" |
+| Cambiar de padre al editar | Mover Lote Sur de San Isidro a La Esperanza (PUT con `predioId: 2`) |
+| Nombre del padre en la tabla | Columna Predio con el **nombre**, resuelto con un `Map` |
+| Filtro por padre | "Filtrar por predio" |
+| POST y PUT en Network con el id del padre | El Payload muestra `"predioId": 2` |
+| Referencia inexistente | `fetch` con `predioId: 999` desde la Console → **404** "No existe el predio con id: 999" |
+| Sin petición por fila | En Network → Fetch/XHR, al abrir Parcelas solo aparecen `plots` y `farms` |
+| Recorrido hasta la FK | Flujo "Mover de predio" + DataGrip: `SELECT parcela_id, predio_id, codigo FROM agrocontrol.parcela` |
+
+### Respuestas para la defensa oral
+1. **¿Por qué Parcela es la hija?** Porque cada parcela necesita un predio (`predio_id NOT NULL`) y un predio puede tener muchas parcelas.
+2. **`predioId` en el frontend:** el número que identifica al predio dueño. Es la referencia que viaja en el JSON.
+3. **¿Dónde está la FK de verdad?** En PostgreSQL: `fk_parcela_predio` sobre `parcela.predio_id`.
+4. **¿Por qué `predioId` no es igual a `@ManyToOne`?** `predioId` es un número en el JSON y el dominio. `@ManyToOne` es un objeto `PredioJpaEntity` dentro de la entidad JPA. El mapper los traduce.
+5. **Endpoints de la hija:** `GET /plots`, `GET /plots/{id}`, `POST /plots`, `PUT /plots/{id}`, `DELETE /plots/{id}`.
+6. **¿Por qué también `GET /farms` en Parcelas?** Para el selector, el filtro y mostrar el nombre del predio.
+7. **¿Por qué el select es controlado?** Para que el estado de React sea la fuente de verdad: se puede precargar al editar, validar y limpiar.
+8. **¿Qué necesita un select controlado?** `value` (del estado) y `onChange` (que actualiza el estado).
+9. **¿Por qué no `selected` en cada `option`?** Porque lo decide el `value` del `<select>`. Mezclar las dos cosas da conflictos y React avisa.
+10. **¿Por qué `predioId` es texto en `ParcelaFormData`?** El `<select>` entrega siempre texto, y al inicio está vacío ("").
+11. **¿Cuándo se convierte a número?** En `handleSubmit`, después de que la validación no encontró errores.
+12. **¿Si `Number(predioId)` da `NaN`?** No pasaría la validación, porque ningún predio tiene id `NaN`. Así nunca se envía.
+13. **¿Por qué React valida si Spring también lo hace?** Para dar respuesta inmediata al usuario y no enviar peticiones que fallarían seguro.
+14. **¿Por qué no basta el frontend?** Cualquiera puede llamar a la API sin el formulario (Console, curl). La integridad la aseguran Spring y PostgreSQL.
+15. **Un predio con muchas parcelas:** varias filas de `parcela` con el mismo `predio_id`, como San Isidro con P-01, P-02...
+16. **¿Una parcela con dos predios a la vez?** No. `predio_id` es una sola columna con un solo valor.
+17. **`Promise.all`:** lanza `GET /plots` y `GET /farms` al mismo tiempo y espera a los dos.
+18. **Ventaja de cargarlos en paralelo:** se tarda lo que tarda la más lenta, no la suma de las dos.
+19. **Riesgo de `GET /farms/{id}` por fila:** con 100 parcelas serían 100 peticiones. La página se vuelve lenta y el servidor se sobrecarga.
+20. **Problema N+1 en la UI:** 1 petición para la lista + N peticiones, una por cada fila.
+21. **¿Cómo se resuelve el nombre sin pedir nada por fila?** Con los predios ya cargados y un `Map`.
+22. **¿Por qué un `Map`?** `get(id)` encuentra el predio directo, sin recorrer todo el arreglo en cada fila.
+23. **¿Si el `predioId` no está en el arreglo?** Muestra "Sin predio asociado (#id)".
+24. **¿Cómo se precarga el predio al editar?** `parcelaAFormData` convierte `predioId: 1` en `"1"`, y el select muestra ese predio.
+25. **¿Qué pasa al cambiar el predio y actualizar?** Sale `PUT /plots/{id}` con el `predioId` nuevo, el backend valida y hace `UPDATE predio_id`.
+26. **¿Qué valida Spring antes de guardar el nuevo predio?** Que la parcela exista, que el predio destino exista y que el código no se repita en ese predio.
+27. **¿Qué columna cambia en PostgreSQL?** `parcela.predio_id`.
+28. **Crear vs mover:** crear hace `INSERT` de una fila nueva. Mover hace `UPDATE` de `predio_id` en una fila que ya existe (el mismo id).
+29. **¿Cómo se sincroniza la fila después del PUT?** `map()` reemplaza la fila con el objeto que devolvió el backend.
+30. **¿Por qué usar la respuesta y no el payload?** Es lo que realmente quedó en la base de datos, por ejemplo el código normalizado por el backend.
+31. **Filtro local:** `parcelas.filter(p => p.predioId === Number(predioFiltro))` sobre los datos que ya están cargados.
+32. **¿Por qué `Number(predioFiltro)`?** El select da `"1"` y `predioId` es `1`. `"1" === 1` es `false`.
+33. **¿Cuándo filtrar en el backend?** Con muchos datos, paginación o reglas complejas.
+34. **¿Puedo inventar `?predioId=`?** No. El contrato lo define el backend. Hoy existe `/plots/farm/{predioId}`.
+35. **409 al crear una parcela:** el código ya existe en ese predio.
+36. **404 relacionado con `predioId`:** el predio enviado no existe (o fue borrado mientras tanto).
+37. **Un PUT que no cambia el predio, ¿qué mirar en Network?** El Payload (¿lleva el `predioId` nuevo?) y el Response (¿qué `predioId` devolvió?).
+38. **POST completo hasta la FK:** select (`"2"`) → `Number` → `POST /api/plots {predioId: 2}` → `@Valid` → `ParcelaService` (predio existe, código libre) → `getReferenceById(2)` → `INSERT parcela(predio_id = 2, ...)` → PostgreSQL revisa `fk_parcela_predio` → 201.
+39. **PUT que cambia de predio:** GET/{id} → el select muestra "San Isidro" → elijo "La Esperanza" → `PUT /api/plots/2 {predioId: 2}` → Service valida 404 / 409 → `UPDATE parcela SET predio_id = 2` → 200 → `map()` → la columna Predio cambia.
+40. **¿Cómo se muestra el nombre del predio sin copiarlo en la parcela?** La parcela solo guarda `predioId`. La tabla recibe los predios por props y busca el nombre con `predioPorId.get(predioId)`. El nombre vive en un solo lugar: la tabla `predio`.
+
 ## Guía 06 - CRUD completo de Predio
 
 La entidad padre (**Predio**) tiene el CRUD completo en el frontend y en el backend: listar, buscar por id, crear, editar y eliminar.

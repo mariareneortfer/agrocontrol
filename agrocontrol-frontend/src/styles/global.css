@@ -351,3 +351,23 @@ button, input, select, textarea { font: inherit; }
   background: #ecfdf5;
   color: #166534;
 }
+
+/* ===== Guia 07: filtro por predio y aviso de cambio de predio ===== */
+.filter-bar label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+  color: #1f2d1f;
+}
+
+.filter-bar select {
+  min-width: 240px;
+  padding: 9px 12px;
+  border: 1px solid #c5d6bd;
+  border-radius: 10px;
+  background: #ffffff;
+  font: inherit;
+}
+
+.field-hint { color: #8a6d00; font-weight: 600; }

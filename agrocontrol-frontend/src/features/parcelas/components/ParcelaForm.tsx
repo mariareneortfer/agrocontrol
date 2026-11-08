@@ -7,10 +7,16 @@ import type { CrearParcelaRequest } from '../types/CrearParcelaRequest'
 import type { ParcelaFormData } from '../types/ParcelaFormData'
 import { validarParcela, type ParcelaFormErrors } from '../utils/parcelaValidation'
 
+export type ModoFormulario = 'create' | 'edit'
+
 interface ParcelaFormProps {
-  // Predios REALES (cargados por la pagina con GET /api/farms) para el select.
+  // Predios REALES (GET /api/farms) para el selector de predio.
   predios: Predio[]
-  onCreated?: (parcela: Parcela) => void
+  // null o ausente = modo CREAR; una Parcela (cargada con GET /plots/{id}) = modo EDITAR.
+  parcela?: Parcela | null
+  onSaved: (parcela: Parcela, modo: ModoFormulario) => void
+  onCancelEdit?: () => void
+  onBusyChange?: (ocupado: boolean) => void
 }
 
 const initialParcelaForm: ParcelaFormData = {
@@ -23,16 +29,34 @@ const initialParcelaForm: ParcelaFormData = {
   mantenerPredio: false,
 }
 
-export default function ParcelaForm({ predios, onCreated }: ParcelaFormProps) {
-  const [formData, setFormData] = useState<ParcelaFormData>(initialParcelaForm)
+// La Parcela del backend tiene numeros y null; el formulario trabaja con texto.
+const parcelaAFormData = (parcela: Parcela): ParcelaFormData => ({
+  predioId: String(parcela.predioId),
+  codigo: parcela.codigo,
+  nombre: parcela.nombre,
+  superficie: String(parcela.superficie),
+  unidadSuperficie: parcela.unidadSuperficie,
+  ubicacionReferencial: parcela.ubicacionReferencial ?? '',
+  mantenerPredio: false,
+})
+
+// Mismo formulario para CREAR y EDITAR. La pagina le da una key distinta por cada parcela
+// que se edita, asi useState arranca con los datos de esa parcela.
+export default function ParcelaForm({ predios, parcela, onSaved, onCancelEdit, onBusyChange }: ParcelaFormProps) {
+  const [formData, setFormData] = useState<ParcelaFormData>(() =>
+    parcela ? parcelaAFormData(parcela) : initialParcelaForm,
+  )
   const [errors, setErrors] = useState<ParcelaFormErrors>({})
   const [mensaje, setMensaje] = useState('')
   const [apiError, setApiError] = useState('')
-  const [enviando, setEnviando] = useState(false)
+  const [saving, setSaving] = useState(false)
 
+  const isEditing = parcela != null
   const totalErrores = Object.keys(errors).length
   // El select muestra los predios ordenados por nombre; guarda el id, no el nombre.
   const prediosOrdenados = [...predios].sort((a, b) => a.nombre.localeCompare(b.nombre))
+  // Aviso visual cuando, al editar, se elige un predio distinto al original.
+  const cambiaDePredio = parcela != null && formData.predioId !== String(parcela.predioId)
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -53,13 +77,13 @@ export default function ParcelaForm({ predios, onCreated }: ParcelaFormProps) {
     setMensaje('')
     setApiError('')
 
-    const validationErrors = validarParcela(formData)
+    const validationErrors = validarParcela(formData, predios)
     setErrors(validationErrors)
     if (Object.keys(validationErrors).length > 0) return
 
     // Recien aqui, con los datos ya validados, se convierte texto -> number.
     const ubicacion = formData.ubicacionReferencial.trim()
-    const parcelaPayload: CrearParcelaRequest = {
+    const payload: CrearParcelaRequest = {
       predioId: Number(formData.predioId),
       codigo: formData.codigo.trim().toUpperCase(),
       nombre: formData.nombre.trim(),
@@ -69,42 +93,55 @@ export default function ParcelaForm({ predios, onCreated }: ParcelaFormProps) {
     }
 
     try {
-      setEnviando(true)
-      // POST /api/plots: la relacion 1:N viaja como predioId; el backend verifica
-      // que el predio exista (404) y que el codigo no se repita en ese predio (409).
-      const creada = await parcelaService.crear(parcelaPayload)
-      onCreated?.(creada)
-      setMensaje(`Parcela ${creada.codigo} creada correctamente (id ${creada.id}).`)
-      // Si se marco la casilla, se limpia todo menos el predio, para cargar otra parcela seguida.
-      setFormData((prev) =>
-        prev.mantenerPredio
-          ? { ...initialParcelaForm, predioId: prev.predioId, mantenerPredio: true }
-          : initialParcelaForm,
-      )
+      setSaving(true)
+      onBusyChange?.(true)
+      if (parcela) {
+        // PUT: si predioId cambio, el backend mueve la parcela a ese predio (UPDATE predio_id).
+        const actualizada = await parcelaService.actualizar(parcela.id, payload)
+        onSaved(actualizada, 'edit')
+      } else {
+        const creada = await parcelaService.crear(payload)
+        onSaved(creada, 'create')
+        setMensaje(`Parcela ${creada.codigo} creada correctamente (id ${creada.id}).`)
+        setFormData((prev) =>
+          prev.mantenerPredio
+            ? { ...initialParcelaForm, predioId: prev.predioId, mantenerPredio: true }
+            : initialParcelaForm,
+        )
+      }
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fieldErrors).length > 0) {
         setErrors(err.fieldErrors)
       }
       setApiError(mensajeDeError(err))
     } finally {
-      setEnviando(false)
+      setSaving(false)
+      onBusyChange?.(false)
     }
   }
 
   return (
-    <form className="entity-form" onSubmit={handleSubmit} noValidate>
+    <form className={`entity-form${isEditing ? ' entity-form--editing' : ''}`} onSubmit={handleSubmit} noValidate>
+      <h3 className="form-title">
+        {parcela ? `Editar parcela ${parcela.codigo} (#${parcela.id})` : 'Nueva parcela'}
+      </h3>
+
       <div className="form-grid">
         <label>
           Predio *
+          {/* Select controlado: value + onChange. No se usa "selected" en cada option. */}
           <select name="predioId" value={formData.predioId} onChange={handleChange}>
             <option value="">Seleccione un predio</option>
             {prediosOrdenados.map((predio) => (
-              <option key={predio.id} value={predio.id}>
+              <option key={predio.id} value={String(predio.id)}>
                 {predio.nombre}
               </option>
             ))}
           </select>
           {errors.predioId && <small className="field-error">{errors.predioId}</small>}
+          {cambiaDePredio && !errors.predioId && (
+            <small className="field-hint">Al actualizar, la parcela se moverá a este predio.</small>
+          )}
         </label>
 
         <label>
@@ -154,15 +191,17 @@ export default function ParcelaForm({ predios, onCreated }: ParcelaFormProps) {
           )}
         </label>
 
-        <label className="checkbox-field form-span-2">
-          <input
-            type="checkbox"
-            name="mantenerPredio"
-            checked={formData.mantenerPredio}
-            onChange={handleChange}
-          />
-          Mantener el predio seleccionado para registrar otra parcela
-        </label>
+        {!isEditing && (
+          <label className="checkbox-field form-span-2">
+            <input
+              type="checkbox"
+              name="mantenerPredio"
+              checked={formData.mantenerPredio}
+              onChange={handleChange}
+            />
+            Mantener el predio seleccionado para registrar otra parcela
+          </label>
+        )}
       </div>
 
       {totalErrores > 0 && (
@@ -174,11 +213,17 @@ export default function ParcelaForm({ predios, onCreated }: ParcelaFormProps) {
       {mensaje && <div className="form-success">{mensaje}</div>}
 
       <div className="form-actions">
-        <button type="button" className="btn-secondary" onClick={limpiar} disabled={enviando}>
-          Limpiar
-        </button>
-        <button type="submit" className="btn-primary" disabled={enviando}>
-          {enviando ? 'Guardando...' : 'Guardar parcela'}
+        {isEditing ? (
+          <button type="button" className="btn-secondary" onClick={onCancelEdit} disabled={saving}>
+            Cancelar edición
+          </button>
+        ) : (
+          <button type="button" className="btn-secondary" onClick={limpiar} disabled={saving}>
+            Limpiar
+          </button>
+        )}
+        <button type="submit" className="btn-primary" disabled={saving}>
+          {saving ? 'Guardando...' : isEditing ? 'Actualizar parcela' : 'Crear parcela'}
         </button>
       </div>
     </form>

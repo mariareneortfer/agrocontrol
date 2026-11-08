@@ -9,6 +9,39 @@ Backend real de AgroControl con Spring Boot, Maven y Java 21. Desde el Capítulo
 | Entidad dependiente N | Parcela (tabla `parcela`), módulo `plot` |
 | Relación | 1 predio tiene muchas parcelas (FK `parcela.predio_id`) |
 
+## CRUD completo de Parcela + relación Predio 1:N (Guía 07 de React)
+
+| Capa | Cambio |
+|---|---|
+| Port IN | `ActualizarParcelaUseCase` + `ActualizarParcelaCommand`, `EliminarParcelaUseCase` |
+| Port OUT `ParcelaRepositoryPort` | `existePorPredioIdYCodigoEnOtraParcela`, `eliminar(parcela)` |
+| `ParcelaService` | `actualizar` (también mueve la parcela de predio) y `eliminar`, los dos con `@Transactional` |
+| `SpringDataParcelaRepository` | `existsByPredio_IdAndCodigoAndIdNot` |
+| `ParcelaPersistenceAdapter` | `eliminar`: `deleteById` + `flush`, y traduce la violación de la FK de `campana_parcela` |
+| Excepciones de dominio | `ParcelaNoEncontradaException` → 404, `ParcelaEnUsoException` → 409 |
+| DTO | `ActualizarParcelaRequest` (mismas validaciones que el de crear) |
+| `ParcelaController` | `PUT /{id}`, `DELETE /{id}`. `GET /{id}` ahora responde 404 con `ApiError` |
+
+### Contrato
+| Operación | Método y ruta | Respuestas |
+|---|---|---|
+| Listar | `GET /api/plots` | 200 |
+| Buscar | `GET /api/plots/{id}` | 200 · 404 |
+| Por predio | `GET /api/plots/farm/{predioId}` | 200 · 404 |
+| Crear | `POST /api/plots` | 201 · 400 · 404 (predio no existe) · 409 (código repetido) |
+| Actualizar o mover | `PUT /api/plots/{id}` | 200 · 400 · 404 (parcela o predio destino) · 409 (código repetido en el predio destino) |
+| Eliminar | `DELETE /api/plots/{id}` | 204 · 404 · 409 (la parcela está en una campaña) |
+
+### Mover una parcela a otro predio (cambiar la FK)
+`PUT /api/plots/2` con `"predioId": 2`. `ParcelaService.actualizar` sigue este orden:
+1. ¿La parcela 2 existe? Si no → 404.
+2. ¿El predio **destino** existe? Si no → 404 `No existe el predio con id: X`.
+3. ¿El código ya está en **otra** parcela del predio destino? Si sí → 409 (`uq_parcela_predio_codigo`).
+4. `guardar(new Parcela(id, nuevoPredioId, ...))` → el adaptador usa `getReferenceById(nuevoPredioId)` → JPA hace `UPDATE parcela SET predio_id = 2, ...`.
+
+### ¿Por qué una parcela puede dar 409 al eliminarla?
+`campana_parcela` (la tabla puente de la relación N:M campaña–parcela) tiene una FK hacia `parcela`. Si la parcela ya se usó en una campaña, PostgreSQL rechaza el `DELETE`. El adaptador lo traduce a `ParcelaEnUsoException` y responde 409. Hoy las campañas todavía no se usan desde la API, así que lo normal es recibir 204.
+
 ## CRUD completo de Predio (Guía 06 de React)
 
 Se agregaron `PUT` y `DELETE` en todas las capas hexagonales del módulo `farm`.
